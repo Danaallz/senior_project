@@ -17,7 +17,7 @@ class IntroScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16.0),
                 child: Center(
                   child: Image.asset(
-                    "assets/intro_img.png", // <-- Replace with your image
+                    "assets/intro_img.png",
                     fit: BoxFit.contain,
                   ),
                 ),
@@ -44,29 +44,27 @@ class IntroScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Title
                       const Text(
                         "Optimize Projects with DTPCM",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                          color: Colors.black87, // Dark for title
                         ),
                       ),
-
                       const SizedBox(height: 10),
-
-                      // Subtitle
                       const Text(
                         "Optimize projects with digital twin visualization and AI predictive models, empowering managers to achieve unparalleled efficiency and success.",
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: Colors.black54),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54, // Light gray for description
+                        ),
                       ),
-
                       const SizedBox(height: 20),
 
-                      // Dots Indicator (static)
+                      // Dots Indicator
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -83,16 +81,18 @@ class IntroScreen extends StatelessWidget {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/login');
+                          },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0D1A3A),
+                            backgroundColor: const Color(0xFF0D1A3A), // Dark Blue
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: const Text(
                             "Log In",
-                            style: TextStyle(fontSize: 18),
+                            style: TextStyle(fontSize: 18, color: Colors.white),
                           ),
                         ),
                       ),
@@ -114,17 +114,22 @@ class IntroScreen extends StatelessWidget {
                       // Create Account Link
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             "Don’t have an account?",
                             style: TextStyle(color: Colors.black54),
                           ),
-                          SizedBox(width: 5),
-                          Text(
-                            "Create an account",
-                            style: TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 5),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pushNamed(context, '/register');
+                            },
+                            child: const Text(
+                              "Create an account",
+                              style: TextStyle(
+                                color: Color(0xFF0D1A3A), // Dark Blue for link
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],

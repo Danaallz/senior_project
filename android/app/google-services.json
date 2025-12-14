@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "78893221206",
+    "project_id": "dtpcm-eaec4",
+    "storage_bucket": "dtpcm-eaec4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:78893221206:android:191f7fc40fc74886e402f7",
+        "android_client_info": {
+          "package_name": "com.example.senior_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5yheT6bogkluctkl9VyWWcv6RLLicCkA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
