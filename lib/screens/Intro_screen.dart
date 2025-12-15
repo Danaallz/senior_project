@@ -6,138 +6,166 @@ class IntroScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            // Top Image
-            Expanded(
-              flex: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Center(
-                  child: Image.asset(
-                    "assets/intro_img.png",
-                    fit: BoxFit.contain,
-                  ),
-                ),
+            // 🔹 Background Image
+            Positioned.fill(
+              child: Image.asset(
+                'assets/DigitalTwins.png',
+                fit: BoxFit.contain,
               ),
             ),
 
-            // Bottom Card
-            Expanded(
-              flex: 5,
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(35),
-                    topRight: Radius.circular(35),
+            // 🔹 Foreground Content
+            Column(
+              children: [
+                // Top Image
+                Expanded(
+                  flex: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Center(
+                      child: Image.asset(
+                        "assets/DTPCM.jpeg",
+                        width: 230,
+                        height: 150,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 25,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Text(
-                        "Optimize Projects with DTPCM",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87, // Dark for title
-                        ),
+
+                // Bottom Card
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(173, 134, 134, 134),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(35),
+                        topRight: Radius.circular(35),
                       ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "Optimize projects with digital twin visualization and AI predictive models, empowering managers to achieve unparalleled efficiency and success.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black54, // Light gray for description
-                        ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 25,
                       ),
-                      const SizedBox(height: 20),
-
-                      // Dots Indicator
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildDot(true),
-                          _buildDot(false),
-                          _buildDot(false),
-                        ],
-                      ),
-
-                      const SizedBox(height: 25),
-
-                      // Login Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/login');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0D1A3A), // Dark Blue
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            "Log In",
-                            style: TextStyle(fontSize: 18, color: Colors.white),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Social Buttons
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _socialButton("assets/google.png"),
-                          _socialButton("assets/apple.png"),
-                          _socialButton("assets/facebook.png"),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Create Account Link
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           const Text(
-                            "Don’t have an account?",
-                            style: TextStyle(color: Colors.black54),
+                            "Optimize Projects with DTPCM",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
                           ),
-                          const SizedBox(width: 5),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.pushNamed(context, '/register');
-                            },
-                            child: const Text(
-                              "Create an account",
-                              style: TextStyle(
-                                color: Color(0xFF0D1A3A), // Dark Blue for link
-                                fontWeight: FontWeight.bold,
+
+                          const SizedBox(height: 10),
+
+                          const Text(
+                            "Optimize projects with digital twin visualization and AI predictive models, empowering managers to achieve unparalleled efficiency and success.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color.fromARGB(137, 0, 0, 0),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Dots Indicator
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildDot(true),
+                              _buildDot(false),
+                              _buildDot(false),
+                            ],
+                          ),
+
+                          const SizedBox(height: 25),
+
+                          // Login Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/login');
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    const Color(0xFF0D1A3A),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                "Log In",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
+
+                          const SizedBox(height: 20),
+
+                          // Social Buttons
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _socialButton(
+                                  "assets/google-Icon.png"),
+                              _socialButton(
+                                  "assets/apple-Icon.png"),
+                              _socialButton(
+                                  "assets/facebook-alt-Icon.png"),
+                            ],
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Create Account Link
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                "Don’t have an account?",
+                                style:
+                                    TextStyle(color: Colors.black54),
+                              ),
+                              const SizedBox(width: 5),
+                              GestureDetector(
+                                onTap: () {
+                                  Navigator.pushNamed(
+                                      context, '/register');
+                                },
+                                child: const Text(
+                                  "Create an account",
+                                  style: TextStyle(
+                                    color: Color.fromARGB(
+                                        255, 5, 96, 170),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
@@ -145,8 +173,8 @@ class IntroScreen extends StatelessWidget {
     );
   }
 
-  // Dot indicator widget
-  Widget _buildDot(bool isActive) {
+  // Dot indicator
+  static Widget _buildDot(bool isActive) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       width: isActive ? 12 : 8,
@@ -159,16 +187,20 @@ class IntroScreen extends StatelessWidget {
   }
 
   // Social Button
-  Widget _socialButton(String assetPath) {
+  static Widget _socialButton(String assetPath) {
     return Container(
       width: 60,
       height: 50,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color.fromARGB(164, 114, 114, 114),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 4)
+        ],
       ),
-      child: Center(child: Image.asset(assetPath, width: 28, height: 28)),
+      child: Center(
+        child: Image.asset(assetPath, width: 28, height: 28),
+      ),
     );
   }
 }
