@@ -5,32 +5,39 @@ class AuthService {
 
   // add new user
   Future<User?> register(String email, String password, String name) async {
-    UserCredential userCredential =
-        await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+    try {
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-    User? user = userCredential.user;
+      User? user = userCredential.user;
 
-    if (user != null) {
-      // update display name
-      await user.updateDisplayName(name);
-      await user.reload(); // refresh user data
-      user = _auth.currentUser;
+      if (user != null) {
+        await user.updateDisplayName(name);
+        await user.reload();
+        user = _auth.currentUser;
+      }
+
+      return user;
+    } on FirebaseAuthException {
+      rethrow;
     }
-
-    return user;
   }
 
   // login existing user
   Future<User?> login(String email, String password) async {
-    UserCredential userCredential =
-        await _auth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-    return userCredential.user;
+    try {
+      UserCredential userCredential =
+          await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return userCredential.user;
+    } on FirebaseAuthException {
+      rethrow;
+    }
   }
 
   // logout user

@@ -46,22 +46,40 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+
       appBar: AppBar(
+        backgroundColor: const Color(0xff0d1b46),
         title: Text(
           "Welcome, $userName",
           style: const TextStyle(color: Colors.grey),
         ),
-        backgroundColor: const Color(0xff0d1b46),
         iconTheme: const IconThemeData(color: Colors.grey),
+
         actions: [
+          // Add Worker
+          IconButton(
+            icon: const Icon(Icons.person_add),
+            tooltip: "Add Worker",
+            onPressed: () {
+              Navigator.pushNamed(context, '/addWorker');
+            },
+          ),
+
+          // Logout
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => _logout(context),
             tooltip: "Logout",
+            onPressed: () => _logout(context),
           ),
         ],
       ),
-      body: const Center(),
+
+      body: const Center(
+        child: Text(
+          "Digital Twin",
+          style: TextStyle(color: Colors.grey, fontSize: 18),
+        ),
+      ),
     );
   }
 }

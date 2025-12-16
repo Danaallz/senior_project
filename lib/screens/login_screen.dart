@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 
@@ -22,32 +23,36 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
 
   Future<void> _loginUser() async {
-    if (!_formKey.currentState!.validate()) return;
+  if (!_formKey.currentState!.validate()) return;
 
-    try {
-      final user = await auth.login(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
+  try {
+    final user = await auth.login(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
 
-      if (user != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Login successful 🎉"),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
+    if (user != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red,
+        const SnackBar(
+            content: Text("Login successful 🎉"),
+          backgroundColor: Colors.green,
         ),
       );
+      Navigator.pushReplacementNamed(context, '/home');
     }
+  } on FirebaseAuthException catch (e) {
+
+    String errorMessage =
+      'Invalid email or password. Please try again or create a new account.';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
+}
 
   @override
   void dispose() {
@@ -70,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: const Color.fromARGB(182, 145, 144, 144),
                   borderRadius: BorderRadius.circular(25),
                   border: Border.all(color: Colors.white30),
                 ),
@@ -78,15 +83,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      Image.asset("assets/Logo_DTPCM.png", height: 200),
+                      Image.asset(
+                        "assets/Logo_DTPCM.png",
+                        height: 60,
+                      ),
                       const SizedBox(height: 20),
+
+                      /// Email
                       _buildTextField(
                         label: "Email Address",
                         controller: _emailController,
                         isRequired: true,
                         isEmail: true,
                       ),
+
                       const SizedBox(height: 15),
+
+                      /// Password
                       _buildTextField(
                         label: "Password",
                         controller: _passwordController,
@@ -100,7 +113,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           });
                         },
                       ),
+
                       const SizedBox(height: 20),
+
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -114,14 +129,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           child: const Text(
                             "Log In",
-                            style: TextStyle(fontSize: 18, color: Colors.white),
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
+
                       const SizedBox(height: 15),
+
                       GestureDetector(
                         onTap: () {
-                          Navigator.pushReplacementNamed(context, '/register');
+                          Navigator.pushReplacementNamed(
+                              context, '/register');
                         },
                         child: const Text.rich(
                           TextSpan(
@@ -180,7 +201,9 @@ class _LoginScreenState extends State<LoginScreen> {
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
-                  obscureText ? Icons.visibility_off : Icons.visibility,
+                  obscureText
+                      ? Icons.visibility_off
+                      : Icons.visibility,
                   color: Colors.white70,
                 ),
                 onPressed: toggleObscure,
@@ -188,20 +211,24 @@ class _LoginScreenState extends State<LoginScreen> {
             : null,
       ),
       validator: (value) {
-        if (isRequired && (value == null || value.isEmpty)) {
-          return 'Please enter $label';
+        if (isRequired && (value == null || value.trim().isEmpty)) {
+          return '$label is required';
         }
-        if (isEmail) {
-          final emailRegExp = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-          if (!emailRegExp.hasMatch(value!)) {
-            return 'Enter a valid email';
+
+        if (isEmail && value != null && value.isNotEmpty) {
+          final emailRegExp =
+              RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+          if (!emailRegExp.hasMatch(value)) {
+            return 'Please enter a valid email address (example@domain.com)';
           }
         }
-        if (isPasswordValidation) {
-          if (value!.length < 6) {
-            return 'Password must be at least 6 characters';
+
+        if (isPasswordValidation && value != null) {
+          if (value.length < 8) {
+            return 'Password must be at least 8 characters long';
           }
         }
+
         return null;
       },
     );

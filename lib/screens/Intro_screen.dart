@@ -12,7 +12,7 @@ class IntroScreen extends StatelessWidget {
             // 🔹 Background Image
             Positioned.fill(
               child: Image.asset(
-                'assets/DigitalTwins.png',
+                'assets/DigitalTwins.jpeg',
                 fit: BoxFit.contain,
               ),
             ),
@@ -38,11 +38,11 @@ class IntroScreen extends StatelessWidget {
 
                 // Bottom Card
                 Expanded(
-                  flex: 5,
+                  flex: 3,
                   child: Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: const Color.fromARGB(173, 134, 134, 134),
+                      color: const Color.fromARGB(182, 83, 83, 83),
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(35),
                         topRight: Radius.circular(35),
@@ -57,12 +57,12 @@ class IntroScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           const Text(
-                            "Optimize Projects with DTPCM",
+                            "Optimize Projects with \nDTPCM",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+                              color: Color.fromARGB(221, 255, 255, 255),
                             ),
                           ),
 
@@ -73,7 +73,7 @@ class IntroScreen extends StatelessWidget {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,
-                              color: Color.fromARGB(137, 0, 0, 0),
+                              color: Color.fromARGB(186, 236, 236, 236),
                             ),
                           ),
 

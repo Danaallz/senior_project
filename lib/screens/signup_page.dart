@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../services/auth_service.dart';
@@ -37,40 +38,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _registerUser() async {
-    if (!_formKey.currentState!.validate()) return;
+  if (!_formKey.currentState!.validate()) return;
 
-    try {
-      final user = await auth.register(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
+  try {
+    final user = await auth.register(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+      _nameController.text.trim(),
+    );
+
+    if (user != null) {
+      // save additional user info to Firestore
+      await userService.addUser(
+        user.uid,
         _nameController.text.trim(),
+        user.email!,
+        _mobileController.text.trim(),
+        _selectedRole ?? '',
       );
 
-      if (user != null) {
-        // save additional user info to Firestore
-        await userService.addUser(
-          user.uid,
-          _nameController.text.trim(),
-          user.email!,
-          _mobileController.text.trim(),
-          _selectedRole ?? '',
-        );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Account created successfully 🎉"),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        const SnackBar(
+          content: Text("Account created successfully 🎉"),
+          backgroundColor: Colors.green,
+        ),
       );
+
+      Navigator.pushReplacementNamed(context, '/home');
     }
   }
+
+  // catch FirebaseAuthException
+  on FirebaseAuthException catch (e) {
+    String errorMessage = 'Unable to create account. Please check your information or try again later.';
+    
+    if (e.code == 'email-already-in-use') {
+      errorMessage =
+          'This email is already registered. Please log in instead.';
+    } else if (e.code == 'weak-password') {
+      errorMessage = 'The password provided is too weak.';
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
+
 
   // Input Field Widget
   Widget _buildInputField({
@@ -171,13 +188,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: const Color.fromARGB(182, 145, 144, 144),
                     borderRadius: BorderRadius.circular(25),
                     border: Border.all(color: Colors.white30),
                   ),
                   child: Column(
                     children: [
-                      Image.asset('assets/Logo_DTPCM.png', height: 200),
+                      Image.asset('assets/Logo_DTPCM.png', height: 60),
                       const SizedBox(height: 20),
                       _buildInputField(label: 'Full Name', controller: _nameController, isRequired: true),
                       const SizedBox(height: 15),

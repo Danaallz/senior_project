@@ -7,6 +7,7 @@ import 'screens/intro_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_page.dart';
 import 'screens/home_page.dart';
+import 'screens/addWorker_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => HomePage(),
+        '/addWorker': (context) => const AddWorkerPage(),
       },
     );
   }
