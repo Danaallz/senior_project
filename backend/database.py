@@ -1,13 +1,17 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, Integer, String, Float, select
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
-#  PgAdmin 4 هنا عدلو البيانات حسب الرمز والاسم اللي سجلتو فيه فتطبيق 
-DB_USER = "postgres"
-DB_PASSWORD = "Aa12345"
-DB_HOST = "localhost"
-DB_NAME = "construction_digital_twin"
-DB_PORT = 5432
+load_dotenv()
+
+# URL in file .env 
+DB_USER = os.getenv("DATABASE_URL")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_NAME = os.getenv("DB_NAME")
+DB_PORT = os.getenv("DB_PORT", "5432")
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
 
 # إنشاء المحرك وSession
@@ -30,7 +34,7 @@ def create_tables():
     Base.metadata.create_all(engine)
     print("Tables created successfully ")
 
-# إضافة بيانات اختبارية إذا لم تكن موجودة
+# إضافة بيانات اختبارية    
 def insert_sample_data():
     session = SessionLocal()
     try:
