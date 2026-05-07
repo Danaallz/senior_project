@@ -23,36 +23,32 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
 
   Future<void> _loginUser() async {
-  if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
 
-  try {
-    final user = await auth.login(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
-    );
-
-    if (user != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Login successful 🎉"),
-          backgroundColor: Colors.green,
-        ),
+    try {
+      final user = await auth.login(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
       );
-      Navigator.pushReplacementNamed(context, '/home');
+
+      if (user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Login successful 🎉"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } on FirebaseAuthException {
+      String errorMessage =
+          'Invalid email or password. Please try again or create a new account.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+      );
     }
-  } on FirebaseAuthException catch (e) {
-
-    String errorMessage =
-      'Invalid email or password. Please try again or create a new account.';
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(errorMessage),
-        backgroundColor: Colors.red,
-      ),
-    );
   }
-}
 
   @override
   void dispose() {
@@ -83,10 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      Image.asset(
-                        "assets/Logo_DTPCM.png",
-                        height: 60,
-                      ),
+                      Image.asset("assets/Logo_DTPCM.png", height: 60),
                       const SizedBox(height: 20),
 
                       /// Email
@@ -129,10 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           child: const Text(
                             "Log In",
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                            ),
+                            style: TextStyle(fontSize: 18, color: Colors.white),
                           ),
                         ),
                       ),
@@ -141,8 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       GestureDetector(
                         onTap: () {
-                          Navigator.pushReplacementNamed(
-                              context, '/register');
+                          Navigator.pushReplacementNamed(context, '/register');
                         },
                         child: const Text.rich(
                           TextSpan(
@@ -155,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: Colors.blueAccent,
                                 ),
-                              )
+                              ),
                             ],
                           ),
                         ),
@@ -198,17 +187,16 @@ class _LoginScreenState extends State<LoginScreen> {
           borderSide: const BorderSide(color: Colors.white),
           borderRadius: BorderRadius.circular(14),
         ),
-        suffixIcon: isPassword
-            ? IconButton(
-                icon: Icon(
-                  obscureText
-                      ? Icons.visibility_off
-                      : Icons.visibility,
-                  color: Colors.white70,
-                ),
-                onPressed: toggleObscure,
-              )
-            : null,
+        suffixIcon:
+            isPassword
+                ? IconButton(
+                  icon: Icon(
+                    obscureText ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.white70,
+                  ),
+                  onPressed: toggleObscure,
+                )
+                : null,
       ),
       validator: (value) {
         if (isRequired && (value == null || value.trim().isEmpty)) {
@@ -216,8 +204,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         if (isEmail && value != null && value.isNotEmpty) {
-          final emailRegExp =
-              RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+          final emailRegExp = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
           if (!emailRegExp.hasMatch(value)) {
             return 'Please enter a valid email address (example@domain.com)';
           }

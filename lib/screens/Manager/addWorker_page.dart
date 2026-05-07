@@ -1,11 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import '../services/worker_service.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/worker_service.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class AddWorkerPage extends StatefulWidget {
   const AddWorkerPage({super.key});
 
   @override
-  _AddWorkerPageState createState() => _AddWorkerPageState();
+  State<AddWorkerPage> createState() => _AddWorkerPageState();
 }
 
 class _AddWorkerPageState extends State<AddWorkerPage> {
@@ -14,14 +17,23 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
   String? selectedRole;
   String salaryType = "month";
   String shiftType = "day";
+  File? selectedImage;
 
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
   final emailController = TextEditingController();
   final salaryController = TextEditingController();
-  final dateController = TextEditingController(text: "25-10-2024");
+  final dateController = TextEditingController(text: "2024-10-25");
 
   final WorkerService workerService = WorkerService();
+
+  @override
+  void initState() {
+    super.initState();
+    salaryController.addListener(() {
+      setState(() {});
+    });
+  }
 
   @override
   void dispose() {
@@ -33,8 +45,82 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
     super.dispose();
   }
 
+  Future<void> pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: source);
+
+    if (picked != null) {
+      setState(() {
+        selectedImage = File(picked.path);
+      });
+    }
+  }
+
+  Future<void> pickDate() async {
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.tryParse(dateController.text) ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (selectedDate != null) {
+      setState(() {
+        dateController.text =
+            "${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}";
+      });
+    }
+  }
+
+  Future<void> saveWorker() async {
+    try {
+      if (!_formKey.currentState!.validate()) return;
+
+      if (selectedRole == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Please select worker role"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      await workerService.addWorker(
+        name: nameController.text.trim(),
+        role: selectedRole!,
+        phone: phoneController.text.trim(),
+        email: emailController.text.trim(),
+        salary: salaryController.text.trim(),
+        salaryType: salaryType,
+        shiftType: shiftType,
+        joiningDate: dateController.text.trim(),
+        imageFile: selectedImage,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Worker added successfully ✅"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final salaryIsEmpty = salaryController.text.trim().isEmpty;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -62,13 +148,15 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                 controller: nameController,
                 hint: "Enter name",
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return "Name is required";
                   }
+
                   List<String> parts = value.trim().split(" ");
                   if (parts.length < 2) {
                     return "Please enter first and last name";
                   }
+
                   return null;
                 },
               ),
@@ -82,15 +170,18 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                 hint: "Enter contact number",
                 keyboardType: TextInputType.phone,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return "Contact number is required";
                   }
+
                   if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
                     return "Only digits allowed";
                   }
+
                   if (value.length != 10) {
                     return "Must be exactly 10 digits";
                   }
+
                   return null;
                 },
               ),
@@ -99,15 +190,20 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
               inputField(
                 controller: emailController,
                 hint: "Enter email address",
+                keyboardType: TextInputType.emailAddress,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return "Email is required";
                   }
+
                   final regex = RegExp(
-                      r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+                    r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                  );
+
                   if (!regex.hasMatch(value)) {
                     return "Enter a valid email";
                   }
+
                   return null;
                 },
               ),
@@ -120,19 +216,39 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                   radioOption("Per Day", "day"),
                 ],
               ),
-              inputField(
+
+              TextFormField(
                 controller: salaryController,
-                hint: "e.g 15,000",
                 keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: "EX: 15,000",
+                  prefixIcon:
+                      salaryController.text.isEmpty
+                          ? Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: SvgPicture.asset(
+                              'assets/SAR.svg',
+                              color: const Color.fromARGB(255, 41, 106, 44),
+                              width: 15,
+                              height: 15,
+                            ),
+                          )
+                          : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return "Salary is required";
                   }
-                  int? salary =
-                      int.tryParse(value.replaceAll(',', ''));
+
+                  int? salary = int.tryParse(value.replaceAll(',', ''));
+
                   if (salary == null || salary < 500) {
                     return "Enter valid salary (>= 500)";
                   }
+
                   return null;
                 },
               ),
@@ -149,27 +265,60 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
               fieldTitle("Joining Date"),
               TextFormField(
                 controller: dateController,
-                readOnly: true,
+                readOnly: false,
                 decoration: InputDecoration(
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  hintText: "YYYY-MM-DD",
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.calendar_today),
+                    onPressed: pickDate,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return "Joining date is required";
                   }
+
+                  final regex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+                  if (!regex.hasMatch(value.trim())) {
+                    return "Use date format YYYY-MM-DD";
+                  }
+
+                  if (DateTime.tryParse(value.trim()) == null) {
+                    return "Enter a valid date";
+                  }
+
                   return null;
                 },
               ),
 
-              fieldTitle("Identification Proof"),
+              fieldTitle("Worker Photo"),
+
+              if (selectedImage != null)
+                Center(
+                  child: CircleAvatar(
+                    radius: 45,
+                    backgroundImage: FileImage(selectedImage!),
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+
               Row(
                 children: [
-                  actionButton(Icons.camera_alt, "Take Photo"),
+                  actionButton(
+                    icon: Icons.camera_alt,
+                    text: "Take Photo",
+                    onTap: () => pickImage(ImageSource.camera),
+                  ),
                   const SizedBox(width: 10),
-                  actionButton(Icons.cloud_upload_outlined, "Add Photo"),
+                  actionButton(
+                    icon: Icons.cloud_upload_outlined,
+                    text: "Add Photo",
+                    onTap: () => pickImage(ImageSource.gallery),
+                  ),
                 ],
               ),
 
@@ -198,42 +347,6 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
       ),
     );
   }
-
-  // ================= LOGIC =================
-
-  Future<void> saveWorker() async {
-    try {
-      if (!_formKey.currentState!.validate()) return;
-      if (selectedRole == null) {
-        throw Exception("Please select worker role");
-      }
-
-      await workerService.addWorker(
-        name: nameController.text.trim(),
-        role: selectedRole!,
-        phone: phoneController.text.trim(),
-        email: emailController.text.trim(),
-        salary: salaryController.text.trim(),
-        salaryType: salaryType,
-        shiftType: shiftType,
-        joiningDate: dateController.text.trim(),
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Worker added successfully ✅"),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      Navigator.pop(context);
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
-
-  // ================= UI HELPERS =================
 
   Widget fieldTitle(String title) {
     return Padding(
@@ -271,23 +384,24 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
           hint: const Text("Select"),
           value: selectedRole,
           isExpanded: true,
-          items: [
-            "Concrete worker",
-            "Mason",
-            "Painter",
-            "Electrician",
-            "Plumber / Pipefitter",
-            "Carpenter",
-            "HVAC tech",
-            "Ironworker / Welder",
-            "Tile and marble setter",
-            "Laborer",
-          ].map(
-            (role) => DropdownMenuItem(
-              value: role,
-              child: Text(role),
-            ),
-          ).toList(),
+          items:
+              [
+                "Site engineer",
+                "Concrete worker",
+                "Mason",
+                "Painter",
+                "Electrician",
+                "Plumber / Pipefitter",
+                "Carpenter",
+                "HVAC tech",
+                "Ironworker / Welder",
+                "Tile and marble setter",
+                "Laborer",
+                "superintendents ",
+                "operators",
+              ].map((role) {
+                return DropdownMenuItem(value: role, child: Text(role));
+              }).toList(),
           onChanged: (value) {
             setState(() => selectedRole = value);
           },
@@ -299,7 +413,7 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
   Widget radioOption(String title, String value) {
     return Row(
       children: [
-        Radio(
+        Radio<String>(
           value: value,
           groupValue: salaryType,
           onChanged: (val) {
@@ -314,7 +428,7 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
   Widget shiftOption(String title, String value) {
     return Row(
       children: [
-        Radio(
+        Radio<String>(
           value: value,
           groupValue: shiftType,
           onChanged: (val) {
@@ -326,20 +440,28 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
     );
   }
 
-  Widget actionButton(IconData icon, String text) {
+  Widget actionButton({
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: Colors.black),
-            const SizedBox(height: 6),
-            Text(text),
-          ],
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: Colors.black),
+              const SizedBox(height: 6),
+              Text(text),
+            ],
+          ),
         ),
       ),
     );

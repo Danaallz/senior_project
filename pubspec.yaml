@@ -15,11 +15,18 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^4.2.1
-  firebase_auth: ^6.1.2
-  cloud_firestore: ^6.1.0
 
+  supabase_flutter: ^2.0.0
+  firebase_auth: ^6.1.2
   cupertino_icons: ^1.0.8
+  image_picker: ^1.0.0
+  flutter_svg: ^2.0.10
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  google_maps_flutter: ^2.6.1
+  cloud_firestore: ^6.1.0
+  firebase_core: ^4.2.1
+  firebase_database: ^12.1.0
 
 # Dev dependencies
 dev_dependencies:
