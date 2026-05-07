@@ -28,6 +28,19 @@ dependencies:
   firebase_core: ^4.2.1
   firebase_database: ^12.1.0
 
+  supabase_flutter: ^2.8.0
+  file_picker: ^8.3.7
+  image_picker: ^1.1.2
+  flutter_dotenv: ^5.2.1
+
+  http: ^1.2.2
+  dropdown_search: ^6.0.2
+  url_launcher: ^6.3.1
+
+  google_maps_flutter: ^2.12.3
+  geocoding: ^3.0.0
+  geolocator: ^14.0.2
+
 # Dev dependencies
 dev_dependencies:
   flutter_test:
@@ -40,4 +53,5 @@ flutter:
   uses-material-design: true
 
   assets:
+    - .env
     - assets/
