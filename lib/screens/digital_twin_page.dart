@@ -286,13 +286,16 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
   }
 
   String getCurrentActivity() {
-    if (timeProgress < 0.20)
+    if (timeProgress < 0.20) {
       return 'Excavation, footings, and foundation preparation';
+    }
     if (timeProgress < 0.45) return 'Concrete frame, slabs, and columns';
-    if (timeProgress < 0.70)
+    if (timeProgress < 0.70) {
       return 'Facade, exterior envelope, and glazing works';
-    if (timeProgress < 0.90)
+    }
+    if (timeProgress < 0.90) {
       return 'Mechanical, electrical, and plumbing systems';
+    }
     return 'Interior finishing, inspection, and handover';
   }
 

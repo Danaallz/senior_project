@@ -33,10 +33,8 @@ import 'package:senior_project/screens/digital_twin_page.dart';
 // Manager Screens
 import 'package:senior_project/screens/Manager/addWorker_page.dart';
 import 'package:senior_project/screens/Manager/Workers.dart';
-import 'package:senior_project/screens/Manager/project_screen.dart';
 
 // Site Engineer Screens
-import 'package:senior_project/screens/Site_Engineer/eng_home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

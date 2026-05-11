@@ -106,18 +106,19 @@ class _AddProjectPageState extends State<AddProjectPage> {
     setState(() => isLoadingManagers = true);
 
     try {
-      final response = await supabase
-          .from('profiles')
-          .select('id, full_name, name, email, role')
-          .or('role.eq.manager,role.eq.project manager')
-          .order('full_name', ascending: true);
+      final response = await supabaseService.getManagers();
+
+      if (!mounted) return;
 
       setState(() {
-        managers = List<Map<String, dynamic>>.from(response);
+        managers = response;
       });
     } catch (e) {
       debugPrint("Load managers error: $e");
-      showMessage("Unable to load managers");
+
+      if (!mounted) return;
+
+      showMessage("Unable to load managers: $e");
     } finally {
       if (mounted) {
         setState(() => isLoadingManagers = false);
@@ -491,8 +492,6 @@ class _AddProjectPageState extends State<AddProjectPage> {
                 final managerName =
                     manager['full_name']?.toString().trim().isNotEmpty == true
                         ? manager['full_name'].toString()
-                        : manager['name']?.toString().trim().isNotEmpty == true
-                        ? manager['name'].toString()
                         : manager['email']?.toString() ?? 'Manager';
 
                 return DropdownMenuItem<String>(

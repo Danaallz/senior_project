@@ -12,14 +12,17 @@ class AddUserPage extends StatefulWidget {
 }
 
 class _AddUserPageState extends State<AddUserPage> {
-  static const String supabaseUrl = 'YOUR_SUPABASE_URL';
-  static const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
-
   final supabase = Supabase.instance.client;
+
+  // Use the same URL and anon key from your main.dart / .env
+  static const String supabaseUrl = 'https://obiwgenpodvxcdgfjkyc.supabase.co';
+  static const String supabaseAnonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9iaXdnZW5wb2R2eGNkZ2Zqa3ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjIwMzksImV4cCI6MjA5MTYzODAzOX0.EAEuUgG-W0p5o3-114jxWk5Ge3phxJjMJvOeUcHxaaY';
 
   late final SupabaseClient createUserClient = SupabaseClient(
     supabaseUrl,
     supabaseAnonKey,
+    authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
   );
 
   final ImagePicker picker = ImagePicker();
@@ -71,7 +74,7 @@ class _AddUserPageState extends State<AddUserPage> {
   }
 
   Future<String?> uploadUserImage(String userId) async {
-    if (selectedImage == null || selectedImageBytes == null) return null;
+    if (selectedImageBytes == null) return null;
 
     final fileName =
         'user_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -118,16 +121,16 @@ class _AddUserPageState extends State<AddUserPage> {
         password: password,
       );
 
-      final user = authResponse.user;
+      final newUser = authResponse.user;
 
-      if (user == null) {
-        throw Exception("Unable to create login account.");
+      if (newUser == null) {
+        throw Exception("Unable to create user login account.");
       }
 
-      final imageUrl = await uploadUserImage(user.id);
+      final imageUrl = await uploadUserImage(newUser.id);
 
       await supabase.from('profiles').insert({
-        'id': user.id,
+        'id': newUser.id,
         'full_name': name,
         'email': email,
         'phone': phone,
@@ -155,7 +158,7 @@ class _AddUserPageState extends State<AddUserPage> {
 
       Navigator.pop(context, true);
     } on AuthException catch (e) {
-      showError(e.message);
+      showError("Auth error: ${e.message}");
     } on PostgrestException catch (e) {
       showError("Database error: ${e.message}");
     } catch (e) {
@@ -175,12 +178,14 @@ class _AddUserPageState extends State<AddUserPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+
       appBar: AppBar(
         title: Text(pageTitle()),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
       ),
+
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -198,7 +203,9 @@ class _AddUserPageState extends State<AddUserPage> {
                       : null,
             ),
           ),
+
           const SizedBox(height: 20),
+
           Row(
             children: [
               Expanded(
@@ -220,9 +227,12 @@ class _AddUserPageState extends State<AddUserPage> {
               ),
             ],
           ),
+
           const SizedBox(height: 24),
+
           const Text("Role", style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
+
           DropdownButtonFormField<String>(
             value: selectedRole,
             decoration: inputDecoration(Icons.admin_panel_settings),
@@ -238,27 +248,36 @@ class _AddUserPageState extends State<AddUserPage> {
               setState(() => selectedRole = value);
             },
           ),
+
           const SizedBox(height: 18),
+
           const Text(
             "Full Name",
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           textField(nameController, "Enter full name", Icons.person),
+
           const SizedBox(height: 18),
+
           const Text("Email", style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           textField(emailController, "Enter email", Icons.email),
+
           const SizedBox(height: 18),
+
           const Text("Phone", style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           textField(phoneController, "Enter phone number", Icons.phone),
+
           const SizedBox(height: 18),
+
           const Text(
             "Temporary Password",
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
+
           TextField(
             controller: passwordController,
             obscureText: obscurePassword,
@@ -274,7 +293,9 @@ class _AddUserPageState extends State<AddUserPage> {
               ),
             ),
           ),
+
           const SizedBox(height: 24),
+
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -288,6 +309,7 @@ class _AddUserPageState extends State<AddUserPage> {
           ),
         ],
       ),
+
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(20),
         child: ElevatedButton(

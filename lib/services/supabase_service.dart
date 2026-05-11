@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 class SupabaseService {
   final supabase = Supabase.instance.client;
@@ -66,17 +67,20 @@ class SupabaseService {
   }
 
   Future<List<Map<String, dynamic>>> getManagers() async {
-    final response = await supabase
-        .from('profiles')
-        .select('id, full_name, email, phone, profile_image_url, role')
-        .filter(
-          'role',
-          'in',
-          '("manager","Manager","project manager","Project Manager")',
-        )
-        .order('full_name', ascending: true);
+    try {
+      final response = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, profile_image_url, role')
+          .or('role.ilike.manager,role.ilike.project manager')
+          .order('full_name', ascending: true);
 
-    return List<Map<String, dynamic>>.from(response);
+      debugPrint("Managers response: $response");
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint("GET MANAGERS ERROR: $e");
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getSiteEngineers() async {

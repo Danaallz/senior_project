@@ -259,19 +259,49 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+
+      drawer: OwnerSidebar(
+        ownerName: "Owner",
+        profileImageUrl: null,
+        onLogout: () async {
+          await supabase.auth.signOut();
+
+          if (!mounted) return;
+
+          Navigator.pushReplacementNamed(context, '/login');
+        },
+      ),
+
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        automaticallyImplyLeading: false,
+        titleSpacing: 0,
+
+        title: Builder(
+          builder: (context) {
+            return Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.black),
+                  onPressed: () => Navigator.pop(context),
+                ),
+
+                IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.black),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+
+                const Spacer(),
+
+                const Padding(
+                  padding: EdgeInsets.only(right: 16),
+                  child: Icon(Icons.notifications_none, color: primaryColor),
+                ),
+              ],
+            );
+          },
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(Icons.notifications_none, color: primaryColor),
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: loadProject,
@@ -287,7 +317,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                 imageUrl: imageUrl,
                 status: status,
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
               OwnerProjectTabBar(
                 selectedTab: selectedTab,
                 onTabSelected: (value) {
@@ -296,7 +326,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                   });
                 },
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               if (selectedTab == "home")
                 buildHomeSection(
                   totalLabor: totalLabor,
@@ -342,97 +372,153 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     required String managerName,
     required int progress,
   }) {
+    final managerImage = cleanText(manager?['profile_image_url']);
+
+    final approvalStatus =
+        cleanText(project!['approval_status']).isEmpty
+            ? "Approved"
+            : cleanText(project!['approval_status']);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        searchBox(),
+
+        const SizedBox(height: 28),
+
         Row(
-          children: [
-            statCard("Total Labor", totalLabor.toString(), Colors.teal),
-            const SizedBox(width: 8),
-            statCard("Total Material", totalMaterial.toString(), Colors.blue),
-            const SizedBox(width: 8),
-            statCard(
-              "Total Equipment",
-              totalEquipment.toString(),
-              Colors.orange,
+          children: const [
+            Text(
+              "Project Insights",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
+            Spacer(),
+            Text(
+              "view all >",
+              style: TextStyle(
+                color: primaryColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+
+        const SizedBox(height: 16),
+
+        Row(
+          children: [
+            statCard("Total Labor", totalLabor.toString(), Colors.teal),
+            const SizedBox(width: 12),
+            statCard("Materials", totalMaterial.toString(), Colors.blue),
+            const SizedBox(width: 12),
+            statCard("Equipment", totalEquipment.toString(), Colors.orange),
+          ],
+        ),
+
+        const SizedBox(height: 28),
+
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Assigned Manager",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      managerName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton.icon(
-                      onPressed: openManagerWhatsApp,
-                      icon: const Icon(Icons.chat_bubble_outline, size: 12),
-                      label: const Text("Chat with manager"),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.green,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      progress >= 100
-                          ? "Project completed"
-                          : "Project is $progress% complete",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      "Start: ${cleanText(project!['start_date'])}\nEnd: ${cleanText(project!['end_date'])}",
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ],
-                ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.035),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
               ),
-              SizedBox(
-                width: 92,
-                height: 92,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      value: progress.clamp(0, 100) / 100,
-                      strokeWidth: 9,
-                      backgroundColor: Colors.white,
-                      valueColor: const AlwaysStoppedAnimation(greenColor),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: managerSection(
+                      managerName: managerName,
+                      managerImage: managerImage,
                     ),
-                    Text(
-                      "$progress%",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                  ),
+                  const SizedBox(width: 18),
+                  progressCircle(progress),
+                ],
+              ),
+
+              const SizedBox(height: 22),
+              Divider(color: Colors.grey.shade200),
+              const SizedBox(height: 18),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: infoTile(
+                      Icons.calendar_today_outlined,
+                      "Start Date",
+                      cleanText(project!['start_date']),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: infoTile(
+                      Icons.event_available_outlined,
+                      "End Date",
+                      cleanText(project!['end_date']),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: infoTile(
+                      Icons.location_on_outlined,
+                      "Location",
+                      cleanText(project!['location']).isEmpty
+                          ? cleanText(project!['city'])
+                          : cleanText(project!['location']),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: infoTile(
+                      Icons.verified_outlined,
+                      "Approval",
+                      approvalStatus,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 22),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: greenColor.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.analytics_outlined, color: greenColor),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        progress >= 100
+                            ? "Project completed successfully."
+                            : "Project is currently $progress% complete and progressing normally.",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
@@ -441,31 +527,39 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        const Row(
-          children: [
+
+        const SizedBox(height: 32),
+
+        Row(
+          children: const [
             Text(
               "Site Photos",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             Spacer(),
             Text(
               "view all >",
-              style: TextStyle(color: primaryColor, fontSize: 12),
+              style: TextStyle(
+                color: primaryColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+
+        const SizedBox(height: 16),
+
         SizedBox(
-          height: 88,
+          height: 92,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
               addPhotoBox(),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               ...sitePhotos.map((photo) {
                 return Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.only(right: 12),
                   child: photoBox(photo['image_url']?.toString() ?? ''),
                 );
               }),
@@ -476,19 +570,212 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
+  Widget searchBox() {
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: TextField(
+        onChanged: (value) {
+          setState(() {
+            searchQuery = value;
+          });
+        },
+        decoration: const InputDecoration(
+          hintText: "Search project details...",
+          prefixIcon: Icon(Icons.search),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.only(top: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget managerSection({
+    required String managerName,
+    required String managerImage,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Assigned Manager",
+          style: TextStyle(
+            color: Colors.grey,
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 23,
+              backgroundColor: Colors.grey.shade200,
+              backgroundImage:
+                  isValidImageUrl(managerImage)
+                      ? NetworkImage(managerImage)
+                      : null,
+              child:
+                  !isValidImageUrl(managerImage)
+                      ? const Icon(Icons.person, color: primaryColor)
+                      : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    managerName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    cleanText(manager?['email']).isEmpty
+                        ? "Project Manager"
+                        : cleanText(manager?['email']),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextButton.icon(
+          onPressed: openManagerWhatsApp,
+          icon: const Icon(Icons.chat_bubble_outline, size: 15),
+          label: const Text("Chat with manager"),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.green,
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget progressCircle(int progress) {
+    final safeProgress = progress.clamp(0, 100);
+
+    return SizedBox(
+      width: 104,
+      child: Column(
+        children: [
+          SizedBox(
+            width: 86,
+            height: 86,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 86,
+                  height: 86,
+                  child: CircularProgressIndicator(
+                    value: safeProgress / 100,
+                    strokeWidth: 9,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: const AlwaysStoppedAnimation(greenColor),
+                  ),
+                ),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "$safeProgress%",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    ),
+                    const Text("Complete", style: TextStyle(fontSize: 10)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget infoTile(IconData icon, String title, String value) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: primaryColor.withOpacity(.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: primaryColor, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value.isEmpty ? "-" : value,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget statCard(String title, String value, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(12),
+        constraints: const BoxConstraints(minHeight: 78),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         decoration: BoxDecoration(
+          color: Colors.white,
           border: Border.all(color: Colors.grey.shade200),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(.025),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title, style: const TextStyle(fontSize: 11)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -497,7 +784,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                     style: TextStyle(
                       color: color,
                       fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                      fontSize: 20,
                     ),
                   ),
                 ),
@@ -517,8 +804,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           isValidImageUrl(imageUrl)
               ? Image.network(
                 imageUrl,
-                width: 88,
-                height: 88,
+                width: 92,
+                height: 92,
                 fit: BoxFit.cover,
               )
               : photoPlaceholder(),
@@ -527,8 +814,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
   Widget photoPlaceholder() {
     return Container(
-      width: 88,
-      height: 88,
+      width: 92,
+      height: 92,
       decoration: BoxDecoration(
         color: Colors.grey.shade100,
         borderRadius: BorderRadius.circular(14),
@@ -542,8 +829,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     return GestureDetector(
       onTap: isUploadingPhoto ? null : pickAndUploadSitePhoto,
       child: Container(
-        width: 88,
-        height: 88,
+        width: 92,
+        height: 92,
         decoration: BoxDecoration(
           color: Colors.blue.withOpacity(0.08),
           borderRadius: BorderRadius.circular(14),

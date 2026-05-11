@@ -142,28 +142,48 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
       onLogout: logout,
       onProfileUpdated: loadOwnerData,
       onRefresh: loadOwnerData,
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SizedBox(
-          height: 54,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              final result = await Navigator.pushNamed(context, '/addProject');
-
-              if (result == true) {
-                loadOwnerData();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xff0d1b46),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.fromLTRB(22, 10, 22, 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(.04),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
             ),
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              "Add new project",
-              style: TextStyle(color: Colors.white),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: ElevatedButton(
+              onPressed: () async {
+                final result = await Navigator.pushNamed(
+                  context,
+                  '/addProject',
+                );
+
+                if (result == true) {
+                  loadOwnerData();
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: const Color(0xff0d1b46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              ),
+              child: const Text(
+                "Add new project",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
           ),
         ),
