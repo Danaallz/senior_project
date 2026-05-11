@@ -1,52 +1,69 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  // add new user
+  // Add new user
   Future<User?> register(String email, String password, String name) async {
     try {
-      UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+      print("Starting registration...");
+
+      final response = await _supabase.auth.signUp(
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
+        data: {'full_name': name.trim()},
       );
 
-      User? user = userCredential.user;
+      print("Auth signup successful");
+      print("User ID: ${response.user?.id}");
+      print("User Email: ${response.user?.email}");
 
-      if (user != null) {
-        await user.updateDisplayName(name);
-        await user.reload();
-        user = _auth.currentUser;
-      }
-
-      return user;
-    } on FirebaseAuthException {
+      return response.user;
+    } on AuthException catch (e) {
+      print("Auth Error: ${e.message}");
+      rethrow;
+    } catch (e) {
+      print("Unexpected Error: $e");
       rethrow;
     }
   }
 
-  // login existing user
+  // Login existing user
   Future<User?> login(String email, String password) async {
     try {
-      UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      print("Attempting login...");
+
+      final response = await _supabase.auth.signInWithPassword(
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
       );
-      return userCredential.user;
-    } on FirebaseAuthException {
+
+      print("Login successful");
+      print("Logged in user: ${response.user?.email}");
+
+      return response.user;
+    } on AuthException catch (e) {
+      print("Login Error: ${e.message}");
+      rethrow;
+    } catch (e) {
+      print("Unexpected Login Error: $e");
       rethrow;
     }
   }
 
-  // logout user
+  // Logout user
   Future<void> logout() async {
-    await _auth.signOut();
+    await _supabase.auth.signOut();
+    print("User logged out");
   }
 
-  // get current user
+  // Get current user
   User? getCurrentUser() {
-    return _auth.currentUser;
+    return _supabase.auth.currentUser;
+  }
+
+  // Get current user id
+  String? getCurrentUserId() {
+    return _supabase.auth.currentUser?.id;
   }
 }

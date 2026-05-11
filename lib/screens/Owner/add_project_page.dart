@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
@@ -8,10 +7,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../services/supabase_service.dart';
+import 'package:senior_project/services/supabase_service.dart';
 
 class AddProjectPage extends StatefulWidget {
-  const AddProjectPage({super.key});
+  final Map<String, dynamic>? existingProject;
+
+  const AddProjectPage({super.key, this.existingProject});
 
   @override
   State<AddProjectPage> createState() => _AddProjectPageState();
@@ -25,7 +26,13 @@ class _AddProjectPageState extends State<AddProjectPage> {
   final nameController = TextEditingController();
   final locationController = TextEditingController();
 
+  bool get isEditMode => widget.existingProject != null;
+
   String? selectedCity;
+  String? selectedManagerId;
+
+  List<Map<String, dynamic>> managers = [];
+  bool isLoadingManagers = false;
 
   final Map<String, LatLng> cityLocations = {
     'Jeddah': const LatLng(21.543333, 39.172779),
@@ -57,6 +64,67 @@ class _AddProjectPageState extends State<AddProjectPage> {
 
   bool isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    loadExistingProject();
+    loadManagers();
+  }
+
+  void loadExistingProject() {
+    if (!isEditMode) return;
+
+    final p = widget.existingProject!;
+
+    nameController.text = p['name']?.toString() ?? '';
+    locationController.text = p['location']?.toString() ?? '';
+    selectedCity = p['city']?.toString();
+
+    selectedManagerId = p['assigned_manager_id']?.toString();
+
+    final lat = double.tryParse(p['latitude']?.toString() ?? '');
+    final lng = double.tryParse(p['longitude']?.toString() ?? '');
+
+    if (lat != null && lng != null) {
+      selectedLat = lat;
+      selectedLng = lng;
+      selectedLocation = LatLng(lat, lng);
+
+      projectMarker = Marker(
+        markerId: const MarkerId("project_location"),
+        position: selectedLocation,
+      );
+    } else if (selectedCity != null && cityLocations[selectedCity] != null) {
+      selectedLocation = cityLocations[selectedCity]!;
+    }
+
+    startDate = DateTime.tryParse(p['start_date']?.toString() ?? '');
+    endDate = DateTime.tryParse(p['end_date']?.toString() ?? '');
+  }
+
+  Future<void> loadManagers() async {
+    setState(() => isLoadingManagers = true);
+
+    try {
+      final response = await supabase
+          .from('profiles')
+          .select('id, full_name, name, email, role')
+          .or('role.eq.manager,role.eq.project manager')
+          .order('full_name', ascending: true);
+
+      setState(() {
+        managers = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      debugPrint("Load managers error: $e");
+      showMessage("Unable to load managers");
+    } finally {
+      if (mounted) {
+        setState(() => isLoadingManagers = false);
+      }
+    }
+  }
+
   String cleanInput(String value) {
     return value
         .trim()
@@ -66,12 +134,15 @@ class _AddProjectPageState extends State<AddProjectPage> {
 
   String? validateText(String? value, String fieldName) {
     final text = value?.trim() ?? '';
+
     if (text.isEmpty) return "$fieldName is required";
     if (text.length < 2) return "$fieldName is too short";
     if (text.length > 120) return "$fieldName is too long";
+
     if (RegExp(r'[<>]').hasMatch(text)) {
       return "$fieldName contains invalid characters";
     }
+
     return null;
   }
 
@@ -90,10 +161,7 @@ class _AddProjectPageState extends State<AddProjectPage> {
 
     await mapController?.animateCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: cityLatLng,
-          zoom: 11,
-        ),
+        CameraPosition(target: cityLatLng, zoom: 11),
       ),
     );
   }
@@ -119,13 +187,11 @@ class _AddProjectPageState extends State<AddProjectPage> {
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
 
-        final street = place.street ?? '';
-        final locality = place.locality ?? '';
-        final country = place.country ?? '';
-
-        locationController.text = [street, locality, country]
-            .where((item) => item.trim().isNotEmpty)
-            .join(', ');
+        locationController.text = [
+          place.street ?? '',
+          place.locality ?? '',
+          place.country ?? '',
+        ].where((item) => item.trim().isNotEmpty).join(', ');
       }
     } catch (_) {
       locationController.text =
@@ -135,7 +201,6 @@ class _AddProjectPageState extends State<AddProjectPage> {
 
   Future<void> pickProjectImage() async {
     final picker = ImagePicker();
-
     final image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null) {
@@ -165,7 +230,8 @@ class _AddProjectPageState extends State<AddProjectPage> {
   Future<void> pickDate({required bool isStart}) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate:
+          isStart ? startDate ?? DateTime.now() : endDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
@@ -183,6 +249,7 @@ class _AddProjectPageState extends State<AddProjectPage> {
 
   String formatDate(DateTime? date) {
     if (date == null) return "Select date";
+
     return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
   }
 
@@ -192,7 +259,9 @@ class _AddProjectPageState extends State<AddProjectPage> {
     final fileName =
         'project_${projectTempId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-    await supabase.storage.from('project-images').uploadBinary(
+    await supabase.storage
+        .from('project-images')
+        .uploadBinary(
           fileName,
           selectedImageBytes!,
           fileOptions: const FileOptions(upsert: true),
@@ -205,10 +274,13 @@ class _AddProjectPageState extends State<AddProjectPage> {
     if (selectedBimFile == null || bimBytes == null) return null;
 
     final originalName = selectedBimFile!.name.replaceAll(' ', '_');
+
     final fileName =
         'bim_${projectTempId}_${DateTime.now().millisecondsSinceEpoch}_$originalName';
 
-    await supabase.storage.from('bim-files').uploadBinary(
+    await supabase.storage
+        .from('bim-files')
+        .uploadBinary(
           fileName,
           bimBytes!,
           fileOptions: const FileOptions(upsert: true),
@@ -221,123 +293,131 @@ class _AddProjectPageState extends State<AddProjectPage> {
     if (!_formKey.currentState!.validate()) return;
 
     if (selectedCity == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select city"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showMessage("Please select city");
       return;
     }
 
     if (selectedLat == null || selectedLng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select project location from the map"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showMessage("Please select project location from the map");
+      return;
+    }
+
+    if (selectedManagerId == null) {
+      showMessage("Please select project manager");
       return;
     }
 
     if (startDate == null || endDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select start and end dates"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showMessage("Please select start and end dates");
       return;
     }
 
     if (endDate!.isBefore(startDate!)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("End date must be after start date"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showMessage("End date must be after start date");
       return;
     }
 
-    if (selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please upload project image"),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (!isEditMode && selectedImage == null) {
+      showMessage("Please upload project image");
       return;
     }
 
-    if (selectedBimFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please upload BIM file"),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (!isEditMode && selectedBimFile == null) {
+      showMessage("Please upload BIM file");
       return;
     }
 
     setState(() => isLoading = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("User not logged in");
+      final currentUser = supabase.auth.currentUser;
 
-      final profile = await supabaseService.getProfileByFirebaseUid(user.uid);
-      if (profile == null) throw Exception("Owner profile not found");
+      if (currentUser == null) {
+        throw Exception("User not logged in");
+      }
 
-      final ownerId = profile['id'];
+      final currentProfile = await supabaseService.getCurrentProfile();
+
+      if (currentProfile == null) {
+        throw Exception("Owner profile not found");
+      }
+
+      final projectData = <String, dynamic>{
+        'name': cleanInput(nameController.text),
+        'location': cleanInput(locationController.text),
+        'city': selectedCity,
+        'latitude': selectedLat,
+        'longitude': selectedLng,
+        'start_date': formatDate(startDate),
+        'end_date': formatDate(endDate),
+        'status': 'Pending',
+        'approval_status': 'Pending',
+        'assigned_manager_id': selectedManagerId,
+      };
+
       final tempId = DateTime.now().millisecondsSinceEpoch.toString();
 
-      final imageUrl = await uploadProjectImage(tempId);
-      final bimUrl = await uploadBimFile(tempId);
+      if (selectedImage != null) {
+        final imageUrl = await uploadProjectImage(tempId);
+        projectData['image_url'] = imageUrl;
+      }
 
-      await supabaseService.createProject(
-        data: {
-          'owner_id': ownerId,
-          'manager_id': null,
-          'name': cleanInput(nameController.text),
-          'location': cleanInput(locationController.text),
-          'city': selectedCity,
-          'latitude': selectedLat,
-          'longitude': selectedLng,
-          'start_date': formatDate(startDate),
-          'end_date': formatDate(endDate),
-          'status': 'pending',
+      if (selectedBimFile != null) {
+        final bimUrl = await uploadBimFile(tempId);
+        projectData['bim_file_url'] = bimUrl;
+      }
+
+      if (isEditMode) {
+        await supabaseService.updateProject(
+          projectId: widget.existingProject!['id'].toString(),
+          data: projectData,
+        );
+      } else {
+        projectData.addAll({
+          'owner_id': currentProfile['id'],
           'progress': 0,
-          'image_url': imageUrl,
-          'bim_file_url': bimUrl,
           'total_labor': 0,
           'total_material': 0,
           'total_equipment': 0,
-        },
-      );
+        });
+
+        await supabaseService.createProject(data: projectData);
+      }
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Project submitted for admin approval ✅"),
+        SnackBar(
+          content: Text(
+            isEditMode
+                ? "Project updated and sent for admin approval."
+                : "Project submitted for admin approval ✅",
+          ),
           backgroundColor: Colors.green,
         ),
       );
 
       Navigator.pop(context, true);
     } catch (e) {
+      debugPrint("Save project error: $e");
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Error: $e"),
+          content: Text("Unable to save project: $e"),
           backgroundColor: Colors.red,
         ),
       );
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   @override
@@ -369,14 +449,63 @@ class _AddProjectPageState extends State<AddProjectPage> {
             suffixIcon: suffixIcon,
             filled: true,
             fillColor: Colors.grey.shade50,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(color: Colors.grey.shade200),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget managerDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Project Manager",
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          value: selectedManagerId,
+          isExpanded: true,
+          hint: Text(
+            isLoadingManagers ? "Loading managers..." : "Select manager",
+          ),
+          validator:
+              (value) => value == null ? "Project manager is required" : null,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+          ),
+          items:
+              managers.map((manager) {
+                final managerName =
+                    manager['full_name']?.toString().trim().isNotEmpty == true
+                        ? manager['full_name'].toString()
+                        : manager['name']?.toString().trim().isNotEmpty == true
+                        ? manager['name'].toString()
+                        : manager['email']?.toString() ?? 'Manager';
+
+                return DropdownMenuItem<String>(
+                  value: manager['id'].toString(),
+                  child: Text(managerName),
+                );
+              }).toList(),
+          onChanged:
+              isLoadingManagers
+                  ? null
+                  : (value) {
+                    setState(() => selectedManagerId = value);
+                  },
         ),
       ],
     );
@@ -396,17 +525,16 @@ class _AddProjectPageState extends State<AddProjectPage> {
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.grey.shade50,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(color: Colors.grey.shade200),
             ),
           ),
-          items: cityLocations.keys.map((city) {
-            return DropdownMenuItem(value: city, child: Text(city));
-          }).toList(),
+          items:
+              cityLocations.keys.map((city) {
+                return DropdownMenuItem(value: city, child: Text(city));
+              }).toList(),
           onChanged: (value) {
             if (value != null) moveMapToCity(value);
           },
@@ -439,19 +567,24 @@ class _AddProjectPageState extends State<AddProjectPage> {
               ),
               onMapCreated: (controller) {
                 mapController = controller;
+
+                if (isEditMode) {
+                  controller.animateCamera(
+                    CameraUpdate.newCameraPosition(
+                      CameraPosition(target: selectedLocation, zoom: 11),
+                    ),
+                  );
+                }
               },
               markers: projectMarker == null ? {} : {projectMarker!},
               onTap: selectLocation,
-
               zoomGesturesEnabled: true,
               scrollGesturesEnabled: true,
               rotateGesturesEnabled: true,
               tiltGesturesEnabled: true,
               zoomControlsEnabled: true,
-
               myLocationEnabled: true,
               myLocationButtonEnabled: true,
-
               minMaxZoomPreference: const MinMaxZoomPreference(5, 20),
             ),
           ),
@@ -489,8 +622,10 @@ class _AddProjectPageState extends State<AddProjectPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
@@ -544,17 +679,28 @@ class _AddProjectPageState extends State<AddProjectPage> {
   @override
   Widget build(BuildContext context) {
     final imageSubtitle =
-        selectedImage == null ? "Upload project image" : selectedImage!.name;
+        selectedImage == null
+            ? isEditMode
+                ? "Keep current image or upload new one"
+                : "Upload project image"
+            : selectedImage!.name;
 
     final bimSubtitle =
-        selectedBimFile == null ? "Upload BIM / GLB file" : selectedBimFile!.name;
+        selectedBimFile == null
+            ? isEditMode
+                ? "Keep current BIM file or upload new one"
+                : "Upload BIM / GLB file"
+            : selectedBimFile!.name;
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          "Add New Project",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+        title: Text(
+          isEditMode ? "Edit Project" : "Add New Project",
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
@@ -575,6 +721,8 @@ class _AddProjectPageState extends State<AddProjectPage> {
                 hint: "Enter project name",
                 controller: nameController,
               ),
+              const SizedBox(height: 16),
+              managerDropdown(),
               const SizedBox(height: 16),
               cityDropdown(),
               const SizedBox(height: 16),
@@ -629,12 +777,16 @@ class _AddProjectPageState extends State<AddProjectPage> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                          "Submit Project",
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
+                  child:
+                      isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Text(
+                            isEditMode ? "Save Changes" : "Submit Project",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
                 ),
               ),
             ],

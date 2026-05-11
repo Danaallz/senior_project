@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EngMainLayout extends StatefulWidget {
+  final Map<String, dynamic> project;
   final TabController tabController;
   final List<String> tabs;
-  final Widget Function(String? selectedProjectId) tabContent;
-  final VoidCallback onMenuTap;
+  final Widget Function() tabContent;
   final VoidCallback onNotificationTap;
   final VoidCallback onIotTap;
   final VoidCallback onDigitalTwinTap;
@@ -13,10 +13,10 @@ class EngMainLayout extends StatefulWidget {
 
   const EngMainLayout({
     super.key,
+    required this.project,
     required this.tabController,
     required this.tabs,
     required this.tabContent,
-    required this.onMenuTap,
     required this.onNotificationTap,
     required this.onIotTap,
     required this.onDigitalTwinTap,
@@ -30,469 +30,354 @@ class EngMainLayout extends StatefulWidget {
 class _EngMainLayoutState extends State<EngMainLayout> {
   final supabase = Supabase.instance.client;
 
-  final String defaultProjectImageUrl =
-      "https://yourneighbourhood.com.au/wp-content/uploads/5-Hercules-Street-Hamilton-2.jpg";
+  Map<String, dynamic>? engineerProfile;
 
-  List<Map<String, dynamic>> projects = [];
-  Map<String, dynamic>? selectedProject;
-  bool isLoadingProjects = true;
+  static const Color primaryColor = Color(0xff0d1b46);
 
   @override
   void initState() {
     super.initState();
-    loadAssignedProjects();
+    loadEngineerProfile();
   }
 
-  String getText(
-    Map<String, dynamic>? data,
-    List<String> keys,
-    String fallback,
-  ) {
-    if (data == null) return fallback;
-
-    for (final key in keys) {
-      if (data[key] != null && data[key].toString().trim().isNotEmpty) {
-        return data[key].toString();
-      }
-    }
-
-    return fallback;
+  String cleanText(dynamic value) {
+    return value?.toString().trim().replaceAll(RegExp(r'\s+'), ' ') ?? '';
   }
 
-  Future<void> loadAssignedProjects() async {
-    try {
-      final currentUser = supabase.auth.currentUser;
-
-      if (currentUser == null) {
-        setState(() {
-          projects = [];
-          selectedProject = null;
-          isLoadingProjects = false;
-        });
-        return;
-      }
-
-      final response = await supabase
-          .from('site_engineer_projects')
-          .select('projects(*)')
-          .eq('site_engineer_id', currentUser.id)
-          .order('assigned_at', ascending: false);
-
-      final List<Map<String, dynamic>> loadedProjects = [];
-
-      for (final item in response) {
-        final project = item['projects'];
-
-        if (project != null) {
-          loadedProjects.add(Map<String, dynamic>.from(project));
-        }
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        projects = loadedProjects;
-        selectedProject =
-            loadedProjects.isNotEmpty ? loadedProjects.first : null;
-        isLoadingProjects = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        isLoadingProjects = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error loading assigned projects: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+  bool validImage(String value) {
+    return value.startsWith('http://') || value.startsWith('https://');
   }
 
-  void showProjectsDropdown() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 45,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  "Assigned Projects",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  "Select one of the projects assigned to this site engineer",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                ),
-                const SizedBox(height: 16),
+  Future<void> loadEngineerProfile() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
 
-                if (projects.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text("No assigned projects found"),
-                  )
-                else
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: projects.length,
-                      itemBuilder: (context, index) {
-                        final project = projects[index];
+    final response =
+        await supabase
+            .from('profiles')
+            .select()
+            .eq('id', user.id)
+            .maybeSingle();
 
-                        final name = getText(project, [
-                          'name',
-                          'project_name',
-                          'title',
-                        ], 'Unnamed Project');
+    if (!mounted) return;
 
-                        final location = getText(project, [
-                          'location',
-                          'address',
-                          'project_location',
-                        ], 'No location');
+    setState(() {
+      engineerProfile = response;
+    });
+  }
 
-                        final status = getText(project, [
-                          'status',
-                          'project_status',
-                        ], 'In Progress');
+  Future<void> logout() async {
+    await supabase.auth.signOut();
 
-                        final startDate = getText(project, [
-                          'start_date',
-                        ], 'No start date');
+    if (!mounted) return;
 
-                        final isSelected =
-                            selectedProject != null &&
-                            selectedProject!['id'] == project['id'];
+    Navigator.pushReplacementNamed(context, '/login');
+  }
 
-                        final isPlanning = status.toLowerCase().contains(
-                          "planning",
-                        );
+  String get projectName {
+    return cleanText(widget.project['name']).isEmpty
+        ? 'Project'
+        : cleanText(widget.project['name']);
+  }
 
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              selectedProject = project;
-                            });
-                            Navigator.pop(context);
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color:
-                                  isSelected
-                                      ? Colors.blue.withOpacity(0.08)
-                                      : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color:
-                                    isSelected
-                                        ? Colors.blue
-                                        : Colors.grey.shade200,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        isSelected
-                                            ? Colors.blue.withOpacity(0.12)
-                                            : Colors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Icon(
-                                    Icons.apartment_rounded,
-                                    color:
-                                        isSelected
-                                            ? Colors.blue
-                                            : Colors.grey.shade600,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        location,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        "Start: $startDate",
-                                        style: TextStyle(
-                                          color: Colors.grey.shade500,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        isPlanning
-                                            ? Colors.blue.shade100
-                                            : Colors.orange.shade100,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    status,
-                                    style: TextStyle(
-                                      color:
-                                          isPlanning
-                                              ? Colors.blue
-                                              : Colors.orange,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  String get projectLocation {
+    return cleanText(widget.project['location']).isEmpty
+        ? cleanText(widget.project['city'])
+        : cleanText(widget.project['location']);
+  }
+
+  String get projectStatus {
+    return cleanText(widget.project['status']).isEmpty
+        ? 'In Progress'
+        : cleanText(widget.project['status']);
+  }
+
+  String get projectImage {
+    return cleanText(widget.project['image_url']);
+  }
+
+  String get engineerName {
+    return cleanText(engineerProfile?['full_name']).isEmpty
+        ? 'Site Engineer'
+        : cleanText(engineerProfile?['full_name']);
+  }
+
+  String get engineerImage {
+    return cleanText(engineerProfile?['profile_image_url']);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: buildSidebar(),
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Stack(
           children: [
             Column(
               children: [
-                _buildHeader(),
-                _buildTabBar(),
-                Expanded(
-                  child: widget.tabContent(selectedProject?['id']?.toString()),
-                ),
+                buildHeader(),
+                buildTabBar(),
+                Expanded(child: widget.tabContent()),
               ],
             ),
-            _buildBottomNavBar(),
+            buildBottomNavBar(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    final projectName = getText(selectedProject, [
-      'name',
-      'project_name',
-      'title',
-    ], 'No Project Selected');
-
-    final projectLocation = getText(selectedProject, [
-      'location',
-      'address',
-      'project_location',
-    ], 'No location available');
-
-    final projectStatus = getText(selectedProject, [
-      'status',
-      'project_status',
-    ], 'In Progress');
-
-    final projectImageUrl = getText(selectedProject, [
-      'image_url',
-      'project_image',
-    ], defaultProjectImageUrl);
-
-    final isPlanning = projectStatus.toLowerCase().contains("planning");
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+  Widget buildSidebar() {
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: widget.onMenuTap,
-                child: const Icon(Icons.menu, size: 30),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: widget.onNotificationTap,
-                child: const Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(Icons.notifications_outlined, size: 28),
-                    Positioned(
-                      right: -4,
-                      top: -5,
-                      child: CircleAvatar(
-                        radius: 9,
-                        backgroundColor: Colors.red,
-                        child: Text(
-                          "3",
-                          style: TextStyle(color: Colors.white, fontSize: 10),
-                        ),
-                      ),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.grey.shade200,
+                    backgroundImage:
+                        validImage(engineerImage)
+                            ? NetworkImage(engineerImage)
+                            : null,
+                    child:
+                        validImage(engineerImage)
+                            ? null
+                            : const Icon(
+                              Icons.engineering,
+                              color: primaryColor,
+                            ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      engineerName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 35),
+
+              const Text(
+                "MENUS",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+
+              const SizedBox(height: 15),
+
+              ListTile(
+                leading: const Icon(Icons.home_outlined),
+                title: const Text("Engineer Home"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pop(context);
+                },
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text("Account Settings"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/settings');
+                },
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.support_agent),
+                title: const Text("Customer Support"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/customerSupport');
+                },
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text("About us"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/aboutUs');
+                },
+              ),
+
+              const Spacer(),
+
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text(
+                  "Log out",
+                  style: TextStyle(color: Colors.red),
                 ),
+                onTap: logout,
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.network(
-                  projectImageUrl,
-                  width: 78,
-                  height: 78,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 78,
-                      height: 78,
-                      color: Colors.grey.shade300,
-                      child: const Icon(Icons.image),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child:
-                    isLoadingProjects
-                        ? const LinearProgressIndicator()
-                        : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            GestureDetector(
-                              onTap: showProjectsDropdown,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    "Project monitoring",
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    size: 20,
-                                    color: Colors.grey,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              projectName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              projectLocation,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: Colors.grey.shade700),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color:
-                                    isPlanning
-                                        ? Colors.blue.shade100
-                                        : Colors.orange.shade100,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                projectStatus,
-                                style: TextStyle(
-                                  color:
-                                      isPlanning ? Colors.blue : Colors.orange,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildTabBar() {
+  Widget buildHeader() {
+    return Builder(
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+
+                  const SizedBox(width: 6),
+
+                  GestureDetector(
+                    onTap: () => Scaffold.of(context).openDrawer(),
+                    child: const Icon(Icons.menu, size: 28),
+                  ),
+
+                  const Spacer(),
+
+                  GestureDetector(
+                    onTap: widget.onNotificationTap,
+                    child: const Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(Icons.notifications_outlined, size: 28),
+                        Positioned(
+                          right: -4,
+                          top: -5,
+                          child: CircleAvatar(
+                            radius: 9,
+                            backgroundColor: Colors.red,
+                            child: Text(
+                              "3",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 18),
+
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child:
+                        validImage(projectImage)
+                            ? Image.network(
+                              projectImage,
+                              width: 78,
+                              height: 78,
+                              fit: BoxFit.cover,
+                              errorBuilder:
+                                  (_, __, ___) => projectPlaceholder(),
+                            )
+                            : projectPlaceholder(),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Project monitoring",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+
+                        const SizedBox(height: 2),
+
+                        Text(
+                          projectName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        Text(
+                          projectLocation,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        statusChip(projectStatus),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget projectPlaceholder() {
+    return Container(
+      width: 78,
+      height: 78,
+      color: Colors.grey.shade300,
+      child: const Icon(Icons.apartment, size: 32),
+    );
+  }
+
+  Widget statusChip(String status) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        status,
+        style: const TextStyle(
+          color: Colors.orange,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget buildTabBar() {
     return Container(
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
@@ -513,11 +398,11 @@ class _EngMainLayoutState extends State<EngMainLayout> {
     );
   }
 
-  Widget _buildBottomNavBar() {
+  Widget buildBottomNavBar() {
     return Positioned(
       left: 30,
       right: 30,
-      bottom: 20,
+      bottom: 8,
       child: Container(
         height: 78,
         decoration: BoxDecoration(
@@ -538,19 +423,22 @@ class _EngMainLayoutState extends State<EngMainLayout> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _bottomNavItem(
+                bottomNavItem(
                   icon: Icons.sensors_rounded,
                   label: "IoT Sensors",
                   onTap: widget.onIotTap,
                 ),
+
                 const SizedBox(width: 80),
-                _bottomNavItem(
+
+                bottomNavItem(
                   icon: Icons.thermostat_rounded,
                   label: "Environment",
                   onTap: widget.onEnvironmentTap,
                 ),
               ],
             ),
+
             Positioned(
               top: -34,
               child: GestureDetector(
@@ -577,7 +465,9 @@ class _EngMainLayoutState extends State<EngMainLayout> {
                         size: 36,
                       ),
                     ),
+
                     const SizedBox(height: 4),
+
                     const Text(
                       "Digital Twin",
                       style: TextStyle(
@@ -596,7 +486,7 @@ class _EngMainLayoutState extends State<EngMainLayout> {
     );
   }
 
-  Widget _bottomNavItem({
+  Widget bottomNavItem({
     required IconData icon,
     required String label,
     required VoidCallback onTap,

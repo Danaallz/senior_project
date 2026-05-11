@@ -55,9 +55,10 @@ class _EngAttendanceTabState extends State<EngAttendanceTab>
           .from('attendance')
           .select()
           .eq('project_id', widget.projectId!)
-          .eq('date', dateText);
+          .eq('attendance_date', dateText);
 
       final loadedWorkers = <Map<String, dynamic>>[];
+
       for (final item in workerResponse) {
         if (item['workers'] != null) {
           loadedWorkers.add(Map<String, dynamic>.from(item['workers']));
@@ -65,9 +66,13 @@ class _EngAttendanceTabState extends State<EngAttendanceTab>
       }
 
       final loadedAttendance = <String, String>{};
+
       for (final item in attendanceResponse) {
-        loadedAttendance[item['worker_id'].toString()] =
-            item['status'].toString();
+        final workerId = item['worker_id']?.toString();
+
+        if (workerId != null && workerId.isNotEmpty) {
+          loadedAttendance[workerId] = item['status']?.toString() ?? '';
+        }
       }
 
       if (!mounted) return;
@@ -79,6 +84,7 @@ class _EngAttendanceTabState extends State<EngAttendanceTab>
       });
     } catch (e) {
       if (!mounted) return;
+
       setState(() => isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,17 +96,28 @@ class _EngAttendanceTabState extends State<EngAttendanceTab>
     }
   }
 
-  Future<void> markAttendance(String workerId, String status) async {
+  Future<void> markAttendance(
+    Map<String, dynamic> worker,
+    String status,
+  ) async {
     if (widget.projectId == null) return;
+
+    final workerId = worker['id']?.toString();
+
+    if (workerId == null || workerId.isEmpty) return;
 
     try {
       await supabase.from('attendance').upsert({
         'project_id': widget.projectId,
-        'worker_id': workerId,
-        'date': dateText,
+        'worker_name': worker['name']?.toString() ?? 'Worker',
+        'role': worker['role']?.toString() ?? 'Worker',
         'status': status,
-        'marked_by': supabase.auth.currentUser?.id,
-      }, onConflict: 'project_id,worker_id,date');
+        'attendance_date': dateText,
+        'check_in':
+            status == 'Present' ? DateTime.now().toIso8601String() : null,
+        'created_at': DateTime.now().toIso8601String(),
+        'worker_id': workerId,
+      }, onConflict: 'project_id,worker_id,attendance_date');
 
       setState(() {
         attendanceStatus[workerId] = status;
@@ -262,14 +279,14 @@ class _EngAttendanceTabState extends State<EngAttendanceTab>
                   label: "Present",
                   selected: status == "Present",
                   color: Colors.green,
-                  onTap: () => markAttendance(id, "Present"),
+                  onTap: () => markAttendance(worker, "Present"),
                 ),
                 const SizedBox(width: 6),
                 attendanceButton(
                   label: "Absent",
                   selected: status == "Absent",
                   color: Colors.red,
-                  onTap: () => markAttendance(id, "Absent"),
+                  onTap: () => markAttendance(worker, "Absent"),
                 ),
               ],
             ),

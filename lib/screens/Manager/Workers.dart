@@ -712,7 +712,10 @@ class _WorkersTabState extends State<WorkersTab> {
             onPressed: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AddWorkerPage()),
+                MaterialPageRoute(
+                  builder:
+                      (context) => AddWorkerPage(projectId: widget.projectId),
+                ),
               );
 
               if (result == true) {

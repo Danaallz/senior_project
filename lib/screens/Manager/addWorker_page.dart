@@ -1,11 +1,16 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import '../../services/worker_service.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../services/worker_service.dart';
 
 class AddWorkerPage extends StatefulWidget {
-  const AddWorkerPage({super.key});
+  final String? projectId;
+
+  const AddWorkerPage({super.key, this.projectId});
 
   @override
   State<AddWorkerPage> createState() => _AddWorkerPageState();
@@ -14,10 +19,19 @@ class AddWorkerPage extends StatefulWidget {
 class _AddWorkerPageState extends State<AddWorkerPage> {
   final _formKey = GlobalKey<FormState>();
 
+  final supabase = Supabase.instance.client;
+  final WorkerService workerService = WorkerService();
+
   String? selectedRole;
   String salaryType = "month";
   String shiftType = "day";
   File? selectedImage;
+
+  bool isLoadingSiteEngineers = false;
+  bool isSaving = false;
+
+  List<Map<String, dynamic>> siteEngineers = [];
+  Map<String, dynamic>? selectedSiteEngineer;
 
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
@@ -25,7 +39,9 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
   final salaryController = TextEditingController();
   final dateController = TextEditingController(text: "2024-10-25");
 
-  final WorkerService workerService = WorkerService();
+  bool get isSiteEngineerRole {
+    return selectedRole?.toLowerCase().trim() == "site engineer";
+  }
 
   @override
   void initState() {
@@ -33,6 +49,7 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
     salaryController.addListener(() {
       setState(() {});
     });
+    loadSiteEngineers();
   }
 
   @override
@@ -45,7 +62,61 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
     super.dispose();
   }
 
+  String cleanText(dynamic value) {
+    return value?.toString().trim().replaceAll(RegExp(r'\s+'), ' ') ?? '';
+  }
+
+  Future<void> loadSiteEngineers() async {
+    setState(() => isLoadingSiteEngineers = true);
+
+    try {
+      final response = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, profile_image_url, role')
+          .or('role.eq.site engineer,role.eq.site_engineer')
+          .order('full_name', ascending: true);
+
+      if (!mounted) return;
+
+      setState(() {
+        siteEngineers = List<Map<String, dynamic>>.from(response);
+        isLoadingSiteEngineers = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => isLoadingSiteEngineers = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Unable to load site engineers: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void fillSiteEngineerInfo(Map<String, dynamic> engineer) {
+    setState(() {
+      selectedSiteEngineer = engineer;
+      nameController.text = cleanText(engineer['full_name']);
+      phoneController.text = cleanText(engineer['phone']);
+      emailController.text = cleanText(engineer['email']);
+      selectedImage = null;
+    });
+  }
+
+  void clearPersonInfo() {
+    nameController.clear();
+    phoneController.clear();
+    emailController.clear();
+    selectedSiteEngineer = null;
+    selectedImage = null;
+  }
+
   Future<void> pickImage(ImageSource source) async {
+    if (isSiteEngineerRole) return;
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: source);
 
@@ -77,26 +148,35 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
       if (!_formKey.currentState!.validate()) return;
 
       if (selectedRole == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Please select worker role"),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showError("Please select worker role");
         return;
       }
 
-      await workerService.addWorker(
-        name: nameController.text.trim(),
-        role: selectedRole!,
-        phone: phoneController.text.trim(),
-        email: emailController.text.trim(),
-        salary: salaryController.text.trim(),
-        salaryType: salaryType,
-        shiftType: shiftType,
-        joiningDate: dateController.text.trim(),
-        imageFile: selectedImage,
-      );
+      if (isSiteEngineerRole && selectedSiteEngineer == null) {
+        showError("Please select a site engineer");
+        return;
+      }
+
+      setState(() => isSaving = true);
+
+      if (isSiteEngineerRole) {
+        await saveSelectedSiteEngineerAsWorker();
+      } else {
+        await workerService.addWorker(
+          name: nameController.text.trim(),
+          role: selectedRole!,
+          phone: phoneController.text.trim(),
+          email: emailController.text.trim(),
+          salary: salaryController.text.trim(),
+          salaryType: salaryType,
+          shiftType: shiftType,
+          joiningDate: dateController.text.trim(),
+          projectId: widget.projectId,
+          imageFile: selectedImage,
+        );
+      }
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -111,16 +191,59 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-      );
+      showError("Error: $e");
+    } finally {
+      if (mounted) setState(() => isSaving = false);
     }
+  }
+
+  Future<void> saveSelectedSiteEngineerAsWorker() async {
+    final imageUrl = cleanText(selectedSiteEngineer?['profile_image_url']);
+
+    final insertedWorker =
+        await supabase
+            .from('workers')
+            .insert({
+              'name': nameController.text.trim(),
+              'role': 'Site engineer',
+              'phone': phoneController.text.trim(),
+              'email': emailController.text.trim(),
+              'salary': salaryController.text.trim(),
+              'salary_type': salaryType,
+              'shift_type': shiftType,
+              'joining_date': dateController.text.trim(),
+              'image_url': imageUrl.isEmpty ? null : imageUrl,
+              'created_by': supabase.auth.currentUser?.id,
+              'created_at': DateTime.now().toIso8601String(),
+            })
+            .select()
+            .single();
+
+    if (widget.projectId != null && widget.projectId!.isNotEmpty) {
+      await supabase.from('project_workers').insert({
+        'project_id': widget.projectId,
+        'worker_id': insertedWorker['id'],
+        'assigned_by': supabase.auth.currentUser?.id,
+      });
+
+      await supabase
+          .from('projects')
+          .update({'assigned_site_engineer_id': selectedSiteEngineer!['id']})
+          .eq('id', widget.projectId!);
+    }
+  }
+
+  void showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final salaryIsEmpty = salaryController.text.trim().isEmpty;
-
+    final profileImageUrl = cleanText(
+      selectedSiteEngineer?['profile_image_url'],
+    );
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -143,16 +266,41 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              fieldTitle("Role"),
+              roleDropdown(),
+
+              if (isSiteEngineerRole) ...[
+                fieldTitle("Choose Site Engineer"),
+                siteEngineerDropdown(),
+                const SizedBox(height: 8),
+                if (selectedSiteEngineer != null)
+                  Center(
+                    child: CircleAvatar(
+                      radius: 45,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage:
+                          profileImageUrl.startsWith('http')
+                              ? NetworkImage(profileImageUrl)
+                              : null,
+                      child:
+                          profileImageUrl.startsWith('http')
+                              ? null
+                              : const Icon(Icons.person, size: 42),
+                    ),
+                  ),
+              ],
+
               fieldTitle("Name"),
               inputField(
                 controller: nameController,
                 hint: "Enter name",
+                enabled: !isSiteEngineerRole,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return "Name is required";
                   }
 
-                  List<String> parts = value.trim().split(" ");
+                  final parts = value.trim().split(" ");
                   if (parts.length < 2) {
                     return "Please enter first and last name";
                   }
@@ -161,13 +309,11 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                 },
               ),
 
-              fieldTitle("Role"),
-              roleDropdown(),
-
               fieldTitle("Contact Number"),
               inputField(
                 controller: phoneController,
                 hint: "Enter contact number",
+                enabled: !isSiteEngineerRole,
                 keyboardType: TextInputType.phone,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -190,6 +336,7 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
               inputField(
                 controller: emailController,
                 hint: "Enter email address",
+                enabled: !isSiteEngineerRole,
                 keyboardType: TextInputType.emailAddress,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -243,7 +390,7 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                     return "Salary is required";
                   }
 
-                  int? salary = int.tryParse(value.replaceAll(',', ''));
+                  final salary = int.tryParse(value.replaceAll(',', ''));
 
                   if (salary == null || salary < 500) {
                     return "Enter valid salary (>= 500)";
@@ -294,33 +441,32 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                 },
               ),
 
-              fieldTitle("Worker Photo"),
-
-              if (selectedImage != null)
-                Center(
-                  child: CircleAvatar(
-                    radius: 45,
-                    backgroundImage: FileImage(selectedImage!),
+              if (!isSiteEngineerRole) ...[
+                fieldTitle("Worker Photo"),
+                if (selectedImage != null)
+                  Center(
+                    child: CircleAvatar(
+                      radius: 45,
+                      backgroundImage: FileImage(selectedImage!),
+                    ),
                   ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    actionButton(
+                      icon: Icons.camera_alt,
+                      text: "Take Photo",
+                      onTap: () => pickImage(ImageSource.camera),
+                    ),
+                    const SizedBox(width: 10),
+                    actionButton(
+                      icon: Icons.cloud_upload_outlined,
+                      text: "Add Photo",
+                      onTap: () => pickImage(ImageSource.gallery),
+                    ),
+                  ],
                 ),
-
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  actionButton(
-                    icon: Icons.camera_alt,
-                    text: "Take Photo",
-                    onTap: () => pickImage(ImageSource.camera),
-                  ),
-                  const SizedBox(width: 10),
-                  actionButton(
-                    icon: Icons.cloud_upload_outlined,
-                    text: "Add Photo",
-                    onTap: () => pickImage(ImageSource.gallery),
-                  ),
-                ],
-              ),
+              ],
 
               const SizedBox(height: 32),
 
@@ -334,11 +480,14 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: saveWorker,
-                  child: const Text(
-                    "Save Worker",
-                    style: TextStyle(fontSize: 18, color: Colors.white),
-                  ),
+                  onPressed: isSaving ? null : saveWorker,
+                  child:
+                      isSaving
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                            "Save Worker",
+                            style: TextStyle(fontSize: 18, color: Colors.white),
+                          ),
                 ),
               ),
             ],
@@ -360,12 +509,16 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
     required String hint,
     TextInputType keyboardType = TextInputType.text,
     required String? Function(String?) validator,
+    bool enabled = true,
   }) {
     return TextFormField(
       controller: controller,
+      enabled: enabled,
       keyboardType: keyboardType,
       decoration: InputDecoration(
         hintText: hint,
+        filled: !enabled,
+        fillColor: enabled ? null : Colors.grey.shade200,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       validator: validator,
@@ -397,16 +550,75 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
                 "Ironworker / Welder",
                 "Tile and marble setter",
                 "Laborer",
-                "superintendents ",
+                "superintendents",
                 "operators",
               ].map((role) {
                 return DropdownMenuItem(value: role, child: Text(role));
               }).toList(),
           onChanged: (value) {
-            setState(() => selectedRole = value);
+            setState(() {
+              selectedRole = value;
+
+              if (value?.toLowerCase().trim() == "site engineer") {
+                selectedSiteEngineer = null;
+                nameController.clear();
+                phoneController.clear();
+                emailController.clear();
+                selectedImage = null;
+              } else {
+                clearPersonInfo();
+              }
+            });
           },
         ),
       ),
+    );
+  }
+
+  Widget siteEngineerDropdown() {
+    if (isLoadingSiteEngineers) {
+      return Container(
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const CircularProgressIndicator(),
+      );
+    }
+
+    return DropdownButtonFormField<Map<String, dynamic>>(
+      value: selectedSiteEngineer,
+      isExpanded: true,
+      decoration: InputDecoration(
+        hintText: "Select existing site engineer",
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      items:
+          siteEngineers.map((engineer) {
+            final name =
+                cleanText(engineer['full_name']).isNotEmpty
+                    ? cleanText(engineer['full_name'])
+                    : cleanText(engineer['name']).isNotEmpty
+                    ? cleanText(engineer['name'])
+                    : cleanText(engineer['email']);
+
+            return DropdownMenuItem<Map<String, dynamic>>(
+              value: engineer,
+              child: Text(name),
+            );
+          }).toList(),
+      onChanged: (value) {
+        if (value == null) return;
+        fillSiteEngineerInfo(value);
+      },
+      validator: (_) {
+        if (isSiteEngineerRole && selectedSiteEngineer == null) {
+          return "Please select a site engineer";
+        }
+        return null;
+      },
     );
   }
 

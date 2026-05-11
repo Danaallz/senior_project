@@ -46,7 +46,7 @@ class _ManagerAttendanceTabState extends State<ManagerAttendanceTab> {
           .from('attendance')
           .select()
           .eq('project_id', widget.projectId!)
-          .eq('date', dateText);
+          .eq('attendance_date', dateText);
 
       final loadedWorkers = <Map<String, dynamic>>[];
       for (final item in workerResponse) {

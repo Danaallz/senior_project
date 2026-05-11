@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:senior_project/screens/digital_twin_page.dart';
 import 'package:senior_project/screens/Manager/Workers.dart';
 import 'package:senior_project/screens/Manager/alerts_page.dart';
 import 'package:senior_project/screens/Manager/manager_attendance.dart';
+import 'package:senior_project/screens/Manager/manager_home_screen.dart';
+import 'package:senior_project/screens/Manager/manager_tasks_tab.dart';
+import 'package:senior_project/screens/Manager/project_equipment_page.dart';
+import 'package:senior_project/screens/Manager/project_materials_page.dart';
 
 class ProjectScreen extends StatefulWidget {
-  const ProjectScreen({super.key});
+  final Map<String, dynamic> project;
+
+  const ProjectScreen({super.key, required this.project});
 
   @override
   State<ProjectScreen> createState() => _ProjectScreenState();
@@ -14,12 +21,14 @@ class ProjectScreen extends StatefulWidget {
 
 class _ProjectScreenState extends State<ProjectScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
   final supabase = Supabase.instance.client;
 
-  final String projectImageUrl =
-      "https://yourneighbourhood.com.au/wp-content/uploads/5-Hercules-Street-Hamilton-2.jpg";
+  late TabController _tabController;
+  int currentTabIndex = 0;
+
+  Map<String, dynamic>? managerProfile;
+
+  static const Color primaryColor = Color(0xff0d1b46);
 
   final List<String> tabs = [
     "Home",
@@ -31,15 +40,19 @@ class _ProjectScreenState extends State<ProjectScreen>
     "Equipment",
   ];
 
-  List<Map<String, dynamic>> projects = [];
-  Map<String, dynamic>? selectedProject;
-  bool isLoadingProjects = true;
-
   @override
   void initState() {
     super.initState();
+
     _tabController = TabController(length: tabs.length, vsync: this);
-    loadAssignedProjects();
+
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() => currentTabIndex = _tabController.index);
+      }
+    });
+
+    loadManagerProfile();
   }
 
   @override
@@ -48,402 +61,315 @@ class _ProjectScreenState extends State<ProjectScreen>
     super.dispose();
   }
 
-  String getText(
-    Map<String, dynamic>? data,
-    List<String> keys,
-    String fallback,
-  ) {
-    if (data == null) return fallback;
-
-    for (final key in keys) {
-      if (data[key] != null && data[key].toString().trim().isNotEmpty) {
-        return data[key].toString();
-      }
-    }
-
-    return fallback;
+  String cleanText(dynamic value) {
+    return value?.toString().trim().replaceAll(RegExp(r'\s+'), ' ') ?? '';
   }
 
-  Future<void> loadAssignedProjects() async {
-    try {
-      final currentUser = supabase.auth.currentUser;
-
-      if (currentUser == null) {
-        setState(() {
-          projects = [];
-          selectedProject = null;
-          isLoadingProjects = false;
-        });
-        return;
-      }
-
-      final response = await supabase
-          .from('manager_projects')
-          .select('projects(*)')
-          .eq('manager_id', currentUser.id)
-          .order('assigned_at', ascending: false);
-
-      final assignedProjects = <Map<String, dynamic>>[];
-
-      for (final item in response) {
-        final project = item['projects'];
-        if (project != null) {
-          assignedProjects.add(Map<String, dynamic>.from(project));
-        }
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        projects = assignedProjects;
-        selectedProject =
-            assignedProjects.isNotEmpty ? assignedProjects.first : null;
-        isLoadingProjects = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        isLoadingProjects = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error loading assigned projects: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+  bool isValidImageUrl(String value) {
+    return value.startsWith('http://') || value.startsWith('https://');
   }
 
-  void showProjectsDropdown() {
-    showModalBottomSheet(
-      context: context,
+  String get projectId => widget.project['id'].toString();
+
+  String get projectName {
+    return cleanText(widget.project['name']).isEmpty
+        ? "Project"
+        : cleanText(widget.project['name']);
+  }
+
+  String get projectLocation {
+    return cleanText(widget.project['location']).isEmpty
+        ? cleanText(widget.project['city'])
+        : cleanText(widget.project['location']);
+  }
+
+  String get projectStatus {
+    return cleanText(widget.project['status']).isEmpty
+        ? "In Progress"
+        : cleanText(widget.project['status']);
+  }
+
+  String get projectImageUrl => cleanText(widget.project['image_url']);
+
+  double? get projectLatitude {
+    return double.tryParse(widget.project['latitude']?.toString() ?? '');
+  }
+
+  double? get projectLongitude {
+    return double.tryParse(widget.project['longitude']?.toString() ?? '');
+  }
+
+  String get managerName {
+    return cleanText(managerProfile?['full_name']).isNotEmpty
+        ? cleanText(managerProfile?['full_name'])
+        : cleanText(managerProfile?['name']).isNotEmpty
+        ? cleanText(managerProfile?['name'])
+        : "Manager";
+  }
+
+  String get managerImageUrl {
+    return cleanText(managerProfile?['profile_image_url']).isNotEmpty
+        ? cleanText(managerProfile?['profile_image_url'])
+        : cleanText(managerProfile?['image_url']);
+  }
+
+  Future<void> loadManagerProfile() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final response =
+        await supabase
+            .from('profiles')
+            .select()
+            .eq('id', user.id)
+            .maybeSingle();
+
+    if (!mounted) return;
+
+    setState(() {
+      managerProfile = response;
+    });
+  }
+
+  Future<void> logout() async {
+    await supabase.auth.signOut();
+
+    if (!mounted) return;
+
+    Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  Widget buildSidebar() {
+    return Drawer(
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 45,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                "Assigned Projects",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-
-              if (projects.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text("No assigned projects found"),
-                )
-              else
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: projects.length,
-                    itemBuilder: (context, index) {
-                      final project = projects[index];
-
-                      final name = getText(project, [
-                        'name',
-                        'project_name',
-                        'title',
-                      ], 'Unnamed Project');
-
-                      final location = getText(project, [
-                        'location',
-                        'address',
-                        'project_location',
-                      ], 'No location');
-
-                      final status = getText(project, [
-                        'status',
-                        'project_status',
-                      ], 'In Progress');
-
-                      final selectedId = selectedProject?['id']?.toString();
-                      final projectId = project['id']?.toString();
-                      final isSelected = selectedId == projectId;
-
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedProject = project;
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color:
-                                isSelected
-                                    ? Colors.blue.withOpacity(0.08)
-                                    : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color:
-                                  isSelected
-                                      ? Colors.blue
-                                      : Colors.grey.shade200,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.apartment_rounded,
-                                color: isSelected ? Colors.blue : Colors.grey,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      location,
-                                      style: TextStyle(
-                                        color: Colors.grey.shade700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      status.toLowerCase().contains("planning")
-                                          ? Colors.blue.shade100
-                                          : Colors.orange.shade100,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  status,
-                                  style: TextStyle(
-                                    color:
-                                        status.toLowerCase().contains(
-                                              "planning",
-                                            )
-                                            ? Colors.blue
-                                            : Colors.orange,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.grey.shade200,
+                    backgroundImage:
+                        isValidImageUrl(managerImageUrl)
+                            ? NetworkImage(managerImageUrl)
+                            : null,
+                    child:
+                        isValidImageUrl(managerImageUrl)
+                            ? null
+                            : const Icon(Icons.person, color: primaryColor),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      managerName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 35),
+              const Text(
+                "MENUS",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const SizedBox(height: 15),
+              ListTile(
+                leading: const Icon(Icons.home_outlined),
+                title: const Text("Manager Home"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text("Account Settings"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/settings');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.support_agent),
+                title: const Text("Customer Support"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/customerSupport');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text("About us"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/aboutUs');
+                },
+              ),
+              const Spacer(),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text(
+                  "Log out",
+                  style: TextStyle(color: Colors.red),
                 ),
+                onTap: logout,
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildHeader() {
+    return Builder(
+      builder: (context) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => Scaffold.of(context).openDrawer(),
+                  child: const Icon(Icons.menu, size: 28),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AlertsPage()),
+                    );
+                  },
+                  child: const Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(Icons.notifications_outlined, size: 28),
+                      Positioned(
+                        right: -4,
+                        top: -5,
+                        child: CircleAvatar(
+                          radius: 9,
+                          backgroundColor: Colors.red,
+                          child: Text(
+                            "3",
+                            style: TextStyle(color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child:
+                      isValidImageUrl(projectImageUrl)
+                          ? Image.network(
+                            projectImageUrl,
+                            width: 78,
+                            height: 78,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => projectPlaceholder(),
+                          )
+                          : projectPlaceholder(),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Project management",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        projectName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        projectLocation,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      statusChip(projectStatus),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget buildHeader() {
-    final projectName = getText(selectedProject, [
-      'name',
-      'project_name',
-      'title',
-    ], 'No Project Selected');
+  Widget projectPlaceholder() {
+    return Container(
+      width: 78,
+      height: 78,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.apartment, color: Colors.grey),
+    );
+  }
 
-    final projectLocation = getText(selectedProject, [
-      'location',
-      'address',
-      'project_location',
-    ], 'No assigned project location');
+  Widget statusChip(String status) {
+    final lower = status.toLowerCase();
 
-    final projectStatus = getText(selectedProject, [
-      'status',
-      'project_status',
-    ], 'Not Assigned');
+    Color color = Colors.orange;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.menu, size: 30),
-            const Spacer(),
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const AlertsPage()),
-                );
-              },
-              child: const Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(Icons.notifications_outlined, size: 28),
-                  Positioned(
-                    right: -4,
-                    top: -5,
-                    child: CircleAvatar(
-                      radius: 9,
-                      backgroundColor: Colors.red,
-                      child: Text(
-                        "3",
-                        style: TextStyle(color: Colors.white, fontSize: 10),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    if (lower == 'completed') {
+      color = Colors.green;
+    } else if (lower == 'rejected') {
+      color = Colors.red;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          color: color,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
         ),
-        const SizedBox(height: 18),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.network(
-                projectImageUrl,
-                width: 78,
-                height: 78,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 78,
-                    height: 78,
-                    color: Colors.grey[300],
-                    child: const Icon(Icons.image, size: 32),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child:
-                  isLoadingProjects
-                      ? const LinearProgressIndicator()
-                      : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: showProjectsDropdown,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  "Project management",
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  size: 20,
-                                  color: Colors.grey,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            projectName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            projectLocation,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color:
-                                  projectStatus.toLowerCase().contains(
-                                        "planning",
-                                      )
-                                      ? Colors.blue.shade100
-                                      : projectStatus.toLowerCase().contains(
-                                        "not assigned",
-                                      )
-                                      ? Colors.grey.shade200
-                                      : Colors.orange.shade100,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
-                                  blurRadius: 5,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Text(
-                              projectStatus,
-                              style: TextStyle(
-                                color:
-                                    projectStatus.toLowerCase().contains(
-                                          "planning",
-                                        )
-                                        ? Colors.blue
-                                        : projectStatus.toLowerCase().contains(
-                                          "not assigned",
-                                        )
-                                        ? Colors.grey
-                                        : Colors.orange,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 
@@ -454,97 +380,50 @@ class _ProjectScreenState extends State<ProjectScreen>
         controller: _tabController,
         isScrollable: true,
         tabAlignment: TabAlignment.start,
-        indicatorColor: Colors.blue,
-        labelColor: Colors.blue,
+        indicatorColor: primaryColor,
+        labelColor: primaryColor,
         unselectedLabelColor: Colors.grey,
         labelStyle: const TextStyle(fontWeight: FontWeight.bold),
         padding: EdgeInsets.zero,
         labelPadding: const EdgeInsets.symmetric(horizontal: 18),
-        tabs: tabs.map((t) => Tab(text: t)).toList(),
+        tabs: tabs.map((tab) => Tab(text: tab)).toList(),
       ),
     );
   }
 
-  Widget buildTabContent() {
-    return TabBarView(
-      controller: _tabController,
-      children: [
-        buildSimpleTab(
-          icon: Icons.dashboard_rounded,
-          title: "Manager Home",
-          subtitle:
-              "Overview of ${getText(selectedProject, ['name', 'project_name', 'title'], 'the selected project')}.",
-        ),
-        buildSimpleTab(
-          icon: Icons.view_in_ar_rounded,
-          title: "Digital Twin",
-          subtitle:
-              "Connect your Digital Twin screen here. This tab can show project simulation, progress visualization, IoT site status, and real-time monitoring.",
-        ),
-        buildSimpleTab(
-          icon: Icons.task_alt_rounded,
-          title: "Tasks",
-          subtitle: "View and manage project tasks.",
-        ),
-        const WorkersTab(),
-        ManagerAttendanceTab(projectId: selectedProject?['id']),
-        buildSimpleTab(
-          icon: Icons.inventory_2_rounded,
-          title: "Material",
-          subtitle: "Monitor project materials and stock levels.",
-        ),
-        buildSimpleTab(
-          icon: Icons.construction_rounded,
-          title: "Equipment",
-          subtitle: "View equipment status and maintenance needs.",
-        ),
-      ],
-    );
-  }
-
-  Widget buildSimpleTab({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Center(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.blue.withOpacity(0.15)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 56, color: Colors.blue),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.5,
-                color: Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Widget buildCurrentTab() {
+    switch (currentTabIndex) {
+      case 0:
+        return ManagerHomeScreen(project: widget.project);
+      case 1:
+        return DigitalTwinPage(project: widget.project);
+      case 2:
+        return ManagerTasksTab(projectId: projectId);
+      case 3:
+        return WorkersTab(projectId: projectId);
+      case 4:
+        return ManagerAttendanceTab(projectId: projectId);
+      case 5:
+        return ProjectMaterialsPage(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case 6:
+        return ProjectEquipmentPage(
+          projectId: projectId,
+          projectName: projectName,
+          projectLatitude: projectLatitude,
+          projectLongitude: projectLongitude,
+        );
+      default:
+        return ManagerHomeScreen(project: widget.project);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: buildSidebar(),
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
@@ -563,7 +442,7 @@ class _ProjectScreenState extends State<ProjectScreen>
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: buildTabContent(),
+                child: buildCurrentTab(),
               ),
             ),
           ],

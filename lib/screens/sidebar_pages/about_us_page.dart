@@ -21,12 +21,7 @@ class AboutUsPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Image.asset(
-                "assets/Logo_DTPCM.png",
-                height: 90,
-              ),
-            ),
+            Center(child: Image.asset("assets/Logo_DTPCM.png", height: 90)),
             const SizedBox(height: 25),
             const Text(
               "DTPCM",
@@ -60,8 +55,14 @@ class AboutUsPage extends StatelessWidget {
             featureItem(Icons.analytics_outlined, "Project progress tracking"),
             featureItem(Icons.sensors_outlined, "IoT-based site monitoring"),
             featureItem(Icons.warning_amber_outlined, "Risk and safety alerts"),
-            featureItem(Icons.view_in_ar_outlined, "Digital twin visualization"),
-            featureItem(Icons.smart_toy_outlined, "AI-based prediction support"),
+            featureItem(
+              Icons.view_in_ar_outlined,
+              "Digital twin visualization",
+            ),
+            featureItem(
+              Icons.smart_toy_outlined,
+              "AI-based prediction support",
+            ),
             const SizedBox(height: 30),
             const Text(
               "Senior Project 2025–2026",
