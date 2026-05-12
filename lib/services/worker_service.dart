@@ -60,17 +60,36 @@ class WorkerService {
   Future<List<Map<String, dynamic>>> getWorkers({String? projectId}) async {
     try {
       if (projectId != null && projectId.isNotEmpty) {
-        final response = await supabase
+        final projectWorkers = await supabase
             .from('project_workers')
-            .select('workers(*)')
+            .select('worker_id, assigned_at')
             .eq('project_id', projectId)
             .order('assigned_at', ascending: false);
 
-        return response
-            .map<Map<String, dynamic>>(
-              (item) => Map<String, dynamic>.from(item['workers']),
-            )
-            .toList();
+        final workerIds =
+            projectWorkers
+                .map((item) => item['worker_id'])
+                .where((id) => id != null)
+                .toList();
+
+        if (workerIds.isEmpty) {
+          return [];
+        }
+
+        final workersResponse = await supabase
+            .from('workers')
+            .select()
+            .inFilter('id', workerIds);
+
+        final workers = List<Map<String, dynamic>>.from(workersResponse);
+
+        workers.sort((a, b) {
+          final aIndex = workerIds.indexOf(a['id']);
+          final bIndex = workerIds.indexOf(b['id']);
+          return aIndex.compareTo(bIndex);
+        });
+
+        return workers;
       }
 
       final response = await supabase
@@ -115,7 +134,6 @@ class WorkerService {
   Future<void> deleteWorker({required String workerId}) async {
     try {
       await supabase.from('project_workers').delete().eq('worker_id', workerId);
-
       await supabase.from('workers').delete().eq('id', workerId);
     } catch (e) {
       throw Exception("Failed to delete worker: $e");

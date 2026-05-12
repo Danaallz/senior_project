@@ -14,21 +14,42 @@ class _EngWorkersTabState extends State<EngWorkersTab> {
   final supabase = Supabase.instance.client;
 
   Future<List<Map<String, dynamic>>> fetchWorkers() async {
-    if (widget.projectId == null) {
-      return [];
-    }
+    if (widget.projectId == null) return [];
 
-    final response = await supabase
+    final currentUserEmail =
+        supabase.auth.currentUser?.email?.trim().toLowerCase() ?? '';
+
+    final projectWorkers = await supabase
         .from('project_workers')
-        .select('workers(*)')
+        .select('worker_id')
         .eq('project_id', widget.projectId!);
 
-    final List<Map<String, dynamic>> workers = [];
+    if (projectWorkers.isEmpty) return [];
 
-    for (final item in response) {
-      if (item['workers'] != null) {
-        workers.add(Map<String, dynamic>.from(item['workers']));
-      }
+    final workerIds =
+        projectWorkers
+            .map((item) => item['worker_id'])
+            .where((id) => id != null)
+            .toList();
+
+    if (workerIds.isEmpty) return [];
+
+    final workersResponse = await supabase
+        .from('workers')
+        .select()
+        .inFilter('id', workerIds);
+
+    final workers = <Map<String, dynamic>>[];
+
+    for (final item in workersResponse) {
+      final worker = Map<String, dynamic>.from(item);
+
+      final email = worker['email']?.toString().trim().toLowerCase() ?? '';
+
+      // Hide only the logged-in Site Engineer
+      if (email == currentUserEmail) continue;
+
+      workers.add(worker);
     }
 
     return workers;
@@ -36,7 +57,7 @@ class _EngWorkersTabState extends State<EngWorkersTab> {
 
   String getValue(Map<String, dynamic> worker, List<String> keys) {
     for (final key in keys) {
-      if (worker[key] != null && worker[key].toString().isNotEmpty) {
+      if (worker[key] != null && worker[key].toString().trim().isNotEmpty) {
         return worker[key].toString();
       }
     }
@@ -45,6 +66,10 @@ class _EngWorkersTabState extends State<EngWorkersTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.projectId == null) {
+      return const Center(child: Text("No project selected"));
+    }
+
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: fetchWorkers(),
       builder: (context, snapshot) {
@@ -63,10 +88,6 @@ class _EngWorkersTabState extends State<EngWorkersTab> {
 
         final workers = snapshot.data ?? [];
 
-        if (widget.projectId == null) {
-          return const Center(child: Text("No project selected"));
-        }
-
         if (workers.isEmpty) {
           return const Center(
             child: Text("No workers assigned to this project"),
@@ -80,7 +101,6 @@ class _EngWorkersTabState extends State<EngWorkersTab> {
               "Project Workers",
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
-
             const SizedBox(height: 12),
 
             ...workers.map((worker) {
