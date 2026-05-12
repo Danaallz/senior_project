@@ -72,6 +72,44 @@ class _EngTaskProgressUpdateState extends State<EngTaskProgressUpdate> {
     );
   }
 
+  // ================================
+  // SITE ENGINEER TASK PROGRESS NOTIFICATION
+  // Creates a notification for the site engineer after updating task progress.
+  // This confirms that the progress update was saved and visible in the system.
+  // ================================
+  Future<void> createProgressNotification({
+    required int newProgressPercent,
+    required String newStatus,
+  }) async {
+    try {
+      final engineerId = supabase.auth.currentUser?.id;
+      final projectId = widget.task['project_id']?.toString();
+      final taskDescription =
+          widget.task['description']?.toString().trim().isEmpty == false
+              ? widget.task['description'].toString()
+              : 'Task';
+
+      if (engineerId == null ||
+          engineerId.isEmpty ||
+          projectId == null ||
+          projectId.isEmpty) {
+        return;
+      }
+
+      await supabase.from('notifications').insert({
+        'user_id': engineerId,
+        'project_id': projectId,
+        'type': 'task_progress_updated',
+        'title': 'Progress Updated',
+        'message':
+            '$taskDescription progress is now $newProgressPercent% ($newStatus).',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Progress notification error: $e');
+    }
+  }
+
   Future<void> saveProgress() async {
     final addedQuantity = double.tryParse(quantityController.text.trim());
 
@@ -123,6 +161,15 @@ class _EngTaskProgressUpdateState extends State<EngTaskProgressUpdate> {
             'status': newStatus,
           })
           .eq('id', widget.task['id']);
+
+      // ================================
+      // CREATE TASK PROGRESS NOTIFICATION
+      // Sent after the task progress is saved successfully.
+      // ================================
+      await createProgressNotification(
+        newProgressPercent: newProgressPercent,
+        newStatus: newStatus,
+      );
 
       if (!mounted) return;
 

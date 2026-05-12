@@ -270,6 +270,31 @@ class _EngEquipmentPageState extends State<EngEquipmentPage> {
     }).toList();
   }
 
+  // ================================
+  // EQUIPMENT REQUEST NOTIFICATION
+  // Confirms to the site engineer that an equipment request was sent.
+  // ================================
+  Future<void> createEquipmentRequestNotification({
+    required String itemName,
+    required int quantity,
+  }) async {
+    try {
+      final engineerId = supabase.auth.currentUser?.id;
+      if (engineerId == null || engineerId.isEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': engineerId,
+        'project_id': projectId,
+        'type': 'equipment_request_sent',
+        'title': 'Equipment Request Sent',
+        'message': 'Your request for $quantity more $itemName has been submitted.',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Equipment request notification error: $e');
+    }
+  }
+
   Future<void> requestMore(Map<String, dynamic> item) async {
     final quantityController = TextEditingController();
     final noteController = TextEditingController();
@@ -368,6 +393,15 @@ class _EngEquipmentPageState extends State<EngEquipmentPage> {
                 : noteController.text.trim(),
         'status': 'pending',
       });
+
+      // ================================
+      // CREATE EQUIPMENT REQUEST NOTIFICATION
+      // Confirms request submission for the site engineer.
+      // ================================
+      await createEquipmentRequestNotification(
+        itemName: itemName,
+        quantity: quantity,
+      );
 
       if (!mounted) return;
 

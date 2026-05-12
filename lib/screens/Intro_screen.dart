@@ -12,7 +12,7 @@ class IntroScreen extends StatelessWidget {
             // 🔹 Background Image
             Positioned.fill(
               child: Image.asset(
-                'assets/DigitalTwins.jpeg',
+                'assets/DigitalTwins.png',
                 fit: BoxFit.contain,
               ),
             ),
@@ -27,7 +27,7 @@ class IntroScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(16.0),
                     child: Center(
                       child: Image.asset(
-                        "assets/DTPCM.jpeg",
+                        "assets/DTPCM.png",
                         width: 230,
                         height: 150,
                         fit: BoxFit.contain,

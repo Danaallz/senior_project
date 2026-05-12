@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'eng_home_page.dart';
+import '../notification_bell.dart';
 
 class EngWelcomePage extends StatefulWidget {
   const EngWelcomePage({super.key});
@@ -35,6 +36,68 @@ class _EngWelcomePageState extends State<EngWelcomePage> {
     return value.startsWith('http://') || value.startsWith('https://');
   }
 
+  // ================================
+  // SITE ENGINEER NOTIFICATION HELPER
+  // Creates one notification for the site engineer and prevents duplicates
+  // for the same project/type.
+  // ================================
+  Future<void> createEngineerNotificationOnce({
+    required String engineerId,
+    required String projectId,
+    required String type,
+    required String title,
+    required String message,
+  }) async {
+    try {
+      final existing = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', engineerId)
+          .eq('project_id', projectId)
+          .eq('type', type)
+          .limit(1);
+
+      if (existing.isNotEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': engineerId,
+        'project_id': projectId,
+        'type': type,
+        'title': title,
+        'message': message,
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Site engineer notification error: $e');
+    }
+  }
+
+  // ================================
+  // PROJECT ASSIGNMENT NOTIFICATION
+  // When the manager assigns the site engineer to a project,
+  // the site engineer receives one notification.
+  // ================================
+  Future<void> notifyEngineerForAssignedProjects({
+    required String engineerId,
+    required List<Map<String, dynamic>> assignedProjects,
+  }) async {
+    for (final project in assignedProjects) {
+      final projectId = cleanText(project['id']);
+      final projectName =
+          cleanText(project['name']).isEmpty ? 'Project' : cleanText(project['name']);
+
+      if (projectId.isEmpty) continue;
+
+      await createEngineerNotificationOnce(
+        engineerId: engineerId,
+        projectId: projectId,
+        type: 'engineer_project_assigned',
+        title: 'Project Assigned',
+        message: 'You have been assigned to $projectName as the site engineer.',
+      );
+    }
+  }
+
   Future<void> loadData() async {
     setState(() => isLoading = true);
 
@@ -60,11 +123,23 @@ class _EngWelcomePageState extends State<EngWelcomePage> {
           .eq('assigned_site_engineer_id', user.id)
           .order('created_at', ascending: false);
 
+      final loadedProjects = List<Map<String, dynamic>>.from(projectsResponse);
+
+      // ================================
+      // CREATE ASSIGNMENT NOTIFICATIONS
+      // Generates a notification when this site engineer has assigned projects.
+      // Duplicate notifications are prevented by type/project/user.
+      // ================================
+      await notifyEngineerForAssignedProjects(
+        engineerId: user.id,
+        assignedProjects: loadedProjects,
+      );
+
       if (!mounted) return;
 
       setState(() {
         profile = profileResponse;
-        projects = List<Map<String, dynamic>>.from(projectsResponse);
+        projects = loadedProjects;
         isLoading = false;
       });
     } catch (e) {
@@ -169,23 +244,13 @@ class _EngWelcomePageState extends State<EngWelcomePage> {
               child: const Icon(Icons.menu, size: 30),
             ),
             const Spacer(),
-            const Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(Icons.notifications_outlined, size: 28),
-                Positioned(
-                  right: -4,
-                  top: -5,
-                  child: CircleAvatar(
-                    radius: 9,
-                    backgroundColor: Colors.red,
-                    child: Text(
-                      '3',
-                      style: TextStyle(color: Colors.white, fontSize: 10),
-                    ),
-                  ),
-                ),
-              ],
+            // ================================
+            // SITE ENGINEER NOTIFICATION BELL
+            // Opens NotificationsPage and shows unread notifications.
+            // ================================
+            NotificationBell(
+              color: primaryColor,
+              onClosed: loadData,
             ),
           ],
         );

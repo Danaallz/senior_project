@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/notification_service.dart';
 
 class DigitalTwinPage extends StatefulWidget {
   final Map<String, dynamic> project;
@@ -18,6 +20,7 @@ class DigitalTwinPage extends StatefulWidget {
 class _DigitalTwinPageState extends State<DigitalTwinPage> {
   final Flutter3DController controller = Flutter3DController();
   final supabase = Supabase.instance.client;
+  final NotificationService notificationService = NotificationService();
 
   double timeProgress = 0.0;
   bool autoRotate = true;
@@ -29,6 +32,15 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
   double? weatherHumidity;
   double? weatherWind;
   double? weatherRain;
+
+  double? sensorTemperature;
+  double? sensorHumidity;
+  double? sensorWater;
+  double? sensorGpsLat;
+  double? sensorGpsLng;
+  int? sensorAlert;
+  int? sensorPir;
+  bool usingFirebaseSensors = false;
 
   String? riskLevel;
   String? riskLabel;
@@ -87,9 +99,14 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
       timeProgress = calculateProgressFromDate(todayDate);
       isLoadingLiveData = true;
       isLoadingAI = false;
+      usingFirebaseSensors = false;
     });
 
-    await loadWeatherFromApi();
+    final hasFirebaseSensorData = await loadLatestFirebaseSensorReading();
+
+    if (!hasFirebaseSensorData) {
+      await loadWeatherFromApi();
+    }
 
     if (!mounted) return;
     setState(() => isLoadingLiveData = false);
@@ -100,6 +117,99 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     await saveDigitalTwinSnapshot();
   }
 
+
+  double? toDoubleValue(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  int? toIntValue(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  // ================================
+  // FIREBASE IOT SENSOR INTEGRATION
+  // Reads the latest sensor record from Firebase Realtime Database
+  // only if the selected project has sensor_enabled = true.
+  // If no sensor data is found, the system falls back to Weather API.
+  // ================================
+  Future<bool> loadLatestFirebaseSensorReading() async {
+    try {
+      final sensorEnabled = widget.project['sensor_enabled'] == true ||
+          widget.project['sensor_enabled']?.toString().toLowerCase() == 'true';
+
+      final sensorPath = widget.project['firebase_sensor_path']?.toString();
+
+      if (!sensorEnabled || sensorPath == null || sensorPath.trim().isEmpty) {
+        return false;
+      }
+
+      final snapshot = await FirebaseDatabase.instance
+          .ref(sensorPath)
+          .orderByChild('timestamp')
+          .limitToLast(1)
+          .get();
+
+      if (!snapshot.exists || snapshot.value == null) return false;
+
+      Map<String, dynamic>? latestReading;
+
+      if (snapshot.value is Map) {
+        final rawMap = Map<dynamic, dynamic>.from(snapshot.value as Map);
+
+        if (rawMap.containsKey('temperature') || rawMap.containsKey('humidity')) {
+          latestReading = Map<String, dynamic>.from(rawMap);
+        } else {
+          final values = rawMap.values.toList();
+          if (values.isNotEmpty && values.last is Map) {
+            latestReading = Map<String, dynamic>.from(values.last as Map);
+          }
+        }
+      }
+
+      if (latestReading == null) return false;
+
+      final temp = toDoubleValue(latestReading['temperature']);
+      final hum = toDoubleValue(latestReading['humidity']);
+      final water = toDoubleValue(latestReading['water']);
+      final gpsLat = toDoubleValue(latestReading['gps_lat']);
+      final gpsLng = toDoubleValue(latestReading['gps_lng']);
+      final alert = toIntValue(latestReading['alert']);
+      final pir = toIntValue(latestReading['pir']);
+
+      if (temp == null || hum == null) return false;
+
+      if (!mounted) return false;
+
+      setState(() {
+        sensorTemperature = temp;
+        sensorHumidity = hum;
+        sensorWater = water ?? 0;
+        sensorGpsLat = gpsLat;
+        sensorGpsLng = gpsLng;
+        sensorAlert = alert;
+        sensorPir = pir;
+
+        weatherTemperature = temp;
+        weatherHumidity = hum;
+        weatherRain = water ?? 0;
+        usingFirebaseSensors = true;
+      });
+
+      return true;
+    } catch (e) {
+      debugPrint('Firebase sensor error: $e');
+      return false;
+    }
+  }
+
+  // ================================
+  // WEATHER API FALLBACK
+  // Used when Firebase IoT sensor data is unavailable.
+  // Retrieves live weather data based on project latitude/longitude.
+  // ================================
   Future<void> loadWeatherFromApi() async {
     try {
       final lat = widget.project['latitude'] ?? 21.5433;
@@ -133,6 +243,12 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     return widget.project['id']?.toString() ?? '';
   }
 
+  // ================================
+  // AI ADJUSTED END DATE
+  // Keeps the original project end date as baseline.
+  // If AI predicts a delay, the adjusted end date is calculated
+  // by adding the predicted delay days.
+  // ================================
   DateTime getAdjustedEndDate() {
     if (delayPredicted == true && predictedDelayDays != null) {
       return getProjectEndDate().add(
@@ -142,6 +258,135 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     return getProjectEndDate();
   }
 
+
+
+  // ================================
+  // NOTIFICATION DUPLICATION CONTROL
+  // Prevents sending the same AI warning repeatedly on every refresh/login.
+  // It checks if a similar notification was already created for this project
+  // within the last 6 hours.
+  // ================================
+  Future<bool> hasRecentSimilarNotification({
+    required String userId,
+    required String projectId,
+    required String type,
+  }) async {
+    try {
+      final since = DateTime.now().subtract(const Duration(hours: 6));
+
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('project_id', projectId)
+          .eq('type', type)
+          .gte('created_at', since.toIso8601String())
+          .limit(1);
+
+      return response.isNotEmpty;
+    } catch (e) {
+      debugPrint('Notification duplicate check error: $e');
+      return false;
+    }
+  }
+
+  // ================================
+  // DIGITAL TWIN NOTIFICATIONS
+  // Sends AI prediction alerts to both:
+  // - Owner
+  // - Assigned Manager / current manager
+  //
+  // Notifications are created only for high risk or delay risk.
+  // Similar notifications are limited to once every 6 hours per user.
+  // ================================
+  Future<void> createDigitalTwinNotification() async {
+    try {
+      final ownerId = widget.project['owner_id']?.toString();
+      final assignedManagerId =
+          widget.project['assigned_manager_id']?.toString() ??
+          widget.project['manager_id']?.toString();
+
+      // ================================
+      // SITE ENGINEER AI NOTIFICATION RECIPIENT
+      // The assigned site engineer also receives AI risk/delay alerts.
+      // ================================
+      final assignedSiteEngineerId =
+          widget.project['assigned_site_engineer_id']?.toString();
+
+      final currentUserId = supabase.auth.currentUser?.id;
+
+      final projectId = widget.project['id']?.toString();
+      final projectName = widget.project['name']?.toString() ?? 'Project';
+
+      if (projectId == null || projectId.isEmpty) {
+        return;
+      }
+
+      // ================================
+      // AI NOTIFICATION RECIPIENTS
+      // Adds the owner and the assigned/current manager.
+      // toSet() prevents sending duplicate notifications to the same user.
+      // ================================
+      final recipients = <String>{
+        if (ownerId != null && ownerId.isNotEmpty) ownerId,
+        if (assignedManagerId != null && assignedManagerId.isNotEmpty)
+          assignedManagerId,
+        if (assignedSiteEngineerId != null && assignedSiteEngineerId.isNotEmpty)
+          assignedSiteEngineerId,
+        if (currentUserId != null && currentUserId.isNotEmpty) currentUserId,
+      };
+
+      if (recipients.isEmpty) return;
+
+      final risk = riskLevel?.toLowerCase() ?? '';
+      final delayProb = delayProbability ?? 0;
+
+      String? type;
+      String? title;
+      String? message;
+
+      if (risk.contains('high') || risk.contains('risk')) {
+        type = 'ai_prediction';
+        title = 'AI Risk Alert';
+        message =
+            '$projectName has a high AI risk level. Immediate review is recommended.';
+      } else if (delayPredicted == true || delayProb >= 0.40) {
+        type = 'ai_prediction';
+        title = 'AI Delay Prediction';
+        message =
+            '$projectName may face schedule delay. Estimated delay: ${predictedDelayDays?.toStringAsFixed(1) ?? '0'} days.';
+      }
+
+      if (type == null || title == null || message == null) return;
+
+      for (final userId in recipients) {
+        final exists = await hasRecentSimilarNotification(
+          userId: userId,
+          projectId: projectId,
+          type: type,
+        );
+
+        if (exists) continue;
+
+        await notificationService.createNotification(
+          userId: userId,
+          projectId: projectId,
+          type: type,
+          title: title,
+          message: message,
+        );
+      }
+    } catch (e) {
+      debugPrint('Notification creation error: $e');
+    }
+  }
+
+  // ================================
+  // DIGITAL TWIN SNAPSHOT STORAGE
+  // Saves the current live state of the Digital Twin in Supabase,
+  // including progress, weather/sensor data, AI results,
+  // adjusted end date, and schedule status.
+  // ================================
   Future<void> saveDigitalTwinSnapshot() async {
     try {
       final projectId = widget.project['id']?.toString();
@@ -166,6 +411,11 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
         'weather_humidity': weatherHumidity,
         'weather_wind': weatherWind,
         'weather_rain': weatherRain,
+        'data_source': usingFirebaseSensors ? 'Firebase IoT Sensors' : 'Weather API',
+        'sensor_gps_lat': sensorGpsLat,
+        'sensor_gps_lng': sensorGpsLng,
+        'sensor_alert': sensorAlert,
+        'sensor_pir': sensorPir,
         'risk_level': riskLevel,
         'risk_label': riskLabel,
         'delay_probability': delayProbability,
@@ -185,6 +435,7 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
               .select();
 
       debugPrint("Digital twin snapshot saved successfully: $saved");
+      await createDigitalTwinNotification();
     } catch (e) {
       debugPrint("SNAPSHOT SAVE ERROR: $e");
 
@@ -198,12 +449,30 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     }
   }
 
+  // ================================
+  // AI PREDICTION API INTEGRATION
+  // Sends live site data to FastAPI /predict endpoint.
+  // Uses Firebase sensor readings when available,
+  // otherwise uses weather API data.
+  // ================================
   Future<void> callAIPrediction() async {
-    final temp = weatherTemperature;
-    final hum = weatherHumidity;
-    final rain = (weatherRain ?? 0) > 0 ? 1 : 0;
+    final temp = sensorTemperature ?? weatherTemperature;
+    final hum = sensorHumidity ?? weatherHumidity;
+    final rain = ((sensorWater ?? weatherRain ?? 0) > 0) ? 1 : 0;
 
     if (temp == null || hum == null) return;
+
+    final alertCount = sensorAlert ?? [
+      if (temp > 45) 1,
+      if (hum > 80) 1,
+      if (rain == 1) 1,
+    ].length;
+
+    final pir = sensorPir ?? 1;
+
+    final equipmentAvailability = temp > 45 || rain == 1 ? 0.60 : 0.95;
+    final actualWorkers = temp > 45 || rain == 1 ? 35 : 48;
+    final complexity = temp > 45 || hum > 80 || rain == 1 ? 0.80 : 0.30;
 
     setState(() => isLoadingAI = true);
 
@@ -218,15 +487,17 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
               'temperature': temp,
               'humidity': hum,
               'rainfall': rain,
-              'pir': 1,
-              'alert_count': rain == 1 ? 2 : 0,
-              'equipment_availability': 0.8,
+              'pir': pir,
+              'alert_count': alertCount,
+              'equipment_availability': equipmentAvailability,
               'equipment_breakdown': 0,
               'planned_workers': 50,
-              'actual_workers': 45,
-              'activity_type': 'concrete',
+              'actual_workers': actualWorkers,
+              'activity_type': getStageName().contains('Foundation')
+                  ? 'excavation'
+                  : 'concrete',
               'planned_duration': 7,
-              'complexity': 0.7,
+              'complexity': complexity,
               'project_type': 'commercial',
             }),
           )
@@ -236,13 +507,38 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
 
       final data = jsonDecode(response.body);
 
+      String finalRiskLevel = data['risk']?['level']?.toString() ?? 'Low';
+      String finalRiskLabel = data['risk']?['label']?.toString() ?? 'Safe';
+
+      if (temp < 40 && hum < 75 && rain == 0 && equipmentAvailability >= 0.85) {
+        finalRiskLevel = 'Low';
+        finalRiskLabel = 'Safe';
+      }
+
+      if (temp > 45 || rain == 1 || equipmentAvailability < 0.70) {
+        finalRiskLevel = 'High';
+        finalRiskLabel = 'High Risk';
+      }
+
       setState(() {
         delayPredicted = data['delay']?['predicted'];
         delayProbability = (data['delay']?['probability'] as num?)?.toDouble();
         predictedDelayDays =
             (data['delay']?['estimated_days'] as num?)?.toDouble();
-        riskLevel = data['risk']?['level']?.toString();
-        riskLabel = data['risk']?['label']?.toString();
+        riskLevel = finalRiskLevel;
+
+        // ================================
+        // SIMPLIFIED RISK LABEL
+        // Shows one clean word in the UI: Safe, Warning, or Risk.
+        // ================================
+        if (finalRiskLevel.toLowerCase().contains('high')) {
+          riskLabel = 'Risk';
+        } else if (finalRiskLevel.toLowerCase().contains('medium')) {
+          riskLabel = 'Warning';
+        } else {
+          riskLabel = 'Safe';
+        }
+
         recommendations = List<String>.from(data['recommendations'] ?? []);
       });
     } catch (e) {
@@ -348,6 +644,11 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     );
   }
 
+  // ================================
+  // BIM PROGRESS OVERLAY
+  // Visually hides the unfinished part of the BIM model
+  // based on calculated construction progress.
+  // ================================
   Widget _constructionProgressOverlay() {
     final hiddenPart = (1 - timeProgress).clamp(0.0, 1.0);
     if (hiddenPart <= 0.02) return const SizedBox.shrink();
@@ -857,6 +1158,76 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     );
   }
 
+
+  // ================================
+  // AI SCHEDULE ADJUSTMENT CARD
+  // Displays the original project end date and the AI-adjusted end date.
+  // If AI predicts a delay, the adjusted date adds the predicted delay days.
+  // If the project returns to On Track, the adjusted date returns to baseline.
+  // ================================
+  Widget _buildAdjustedScheduleCard() {
+    final originalEnd = getProjectEndDate();
+    final adjustedEnd = getAdjustedEndDate();
+    final delayDays =
+        delayPredicted == true ? predictedDelayDays?.round() ?? 0 : 0;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.event_available, color: primaryColor, size: 19),
+              SizedBox(width: 8),
+              Text(
+                'AI Schedule Adjustment',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Original End Date: ${_dateLabel(originalEnd)}',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Adjusted End Date: ${_dateLabel(adjustedEnd)}',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            delayDays > 0
+                ? 'Delay Impact: +$delayDays days'
+                : 'Schedule is on track',
+            style: TextStyle(
+              color: delayDays > 0 ? orangeColor : greenColor,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRecommendationsCard() {
     if (recommendations.isEmpty) return const SizedBox.shrink();
 
@@ -912,6 +1283,11 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     );
   }
 
+  // ================================
+  // 4D CONSTRUCTION CALENDAR
+  // Allows selecting dates to simulate construction progress
+  // directly on the BIM model and update the progress overlay.
+  // ================================
   Widget _buildCalendarTimeline() {
     final start = getProjectStartDate();
     final end = getProjectEndDate();
@@ -958,59 +1334,97 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
           SizedBox(
             height: 100,
             child: ListView.builder(
+              controller: ScrollController(
+                initialScrollOffset:
+                    getSelectedDate()
+                        .difference(getProjectStartDate())
+                        .inDays *
+                    75,
+              ),
               scrollDirection: Axis.horizontal,
               itemCount: totalDays,
               itemBuilder: (context, index) {
                 final date = start.add(Duration(days: index));
+
+                // ================================
+                // 4D CALENDAR DATE STATE FIX
+                // Past days are completed and disabled.
+                // Today is highlighted in navy.
+                // Future days remain clickable for simulation.
+                // ================================
+                final today = getTodayWithinProjectRange();
+
+                final cleanToday = DateTime(
+                  today.year,
+                  today.month,
+                  today.day,
+                );
+
+                final cleanDate = DateTime(
+                  date.year,
+                  date.month,
+                  date.day,
+                );
+
+                final isCompleted = cleanDate.isBefore(cleanToday);
+                final isCurrentDay = cleanDate == cleanToday;
+                final isFutureDay = cleanDate.isAfter(cleanToday);
+
                 final isSelected =
                     date.year == selected.year &&
                     date.month == selected.month &&
                     date.day == selected.day;
-                final isCompleted =
-                    calculateProgressFromDate(date) <= timeProgress;
 
                 return GestureDetector(
-                  onTap: () {
-                    final today = getTodayWithinProjectRange();
-                    final cleanDate = DateTime(date.year, date.month, date.day);
-
-                    if (cleanDate.isBefore(today)) {
-                      return;
-                    }
-
-                    setState(() {
-                      selectedTimelineDate = date;
-                      timeProgress = calculateProgressFromDate(date);
-                    });
-                  },
+                  onTap: isCompleted
+                      ? null
+                      : () {
+                          setState(() {
+                            selectedTimelineDate = date;
+                            timeProgress = calculateProgressFromDate(date);
+                          });
+                        },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 220),
-                    width: 66,
-                    margin: const EdgeInsets.only(right: 9),
+                    width: 68,
+                    margin: const EdgeInsets.only(right: 10),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color:
-                          isSelected
+                      color: isCompleted
+                          ? const Color(0xffecfdf5)
+                          : isCurrentDay
                               ? primaryColor
-                              : isCompleted
-                              ? const Color(0xffecfdf5)
-                              : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                              : isSelected && isFutureDay
+                                  ? primaryColor.withOpacity(0.10)
+                                  : Colors.white,
+
+                      borderRadius: BorderRadius.circular(18),
+
                       border: Border.all(
-                        color:
-                            isSelected
-                                ? primaryColor
-                                : isCompleted
-                                ? greenColor.withOpacity(0.45)
-                                : Colors.grey.shade300,
+                        color: isCurrentDay
+                            ? primaryColor
+                            : isCompleted
+                                ? greenColor.withOpacity(.35)
+                                : isSelected && isFutureDay
+                                    ? primaryColor.withOpacity(.55)
+                                    : Colors.grey.shade300,
                       ),
+
+                      boxShadow: [
+                        if (isCurrentDay)
+                          BoxShadow(
+                            color: primaryColor.withOpacity(.25),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                      ],
                     ),
+
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           [
@@ -1022,32 +1436,42 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
                             'Sat',
                             'Sun',
                           ][date.weekday - 1],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+
                           style: TextStyle(
                             fontSize: 11,
-                            color: isSelected ? Colors.white70 : Colors.grey,
                             fontWeight: FontWeight.w700,
+                            color: isCurrentDay
+                                ? Colors.white70
+                                : isCompleted
+                                    ? greenColor.withOpacity(.75)
+                                    : Colors.grey,
                           ),
                         ),
+
                         const SizedBox(height: 3),
+
                         Text(
                           '${date.day}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
-                            color: isSelected ? Colors.white : navy,
+                            color: isCurrentDay
+                                ? Colors.white
+                                : isCompleted
+                                    ? greenColor
+                                    : navy,
                           ),
                         ),
+
                         Text(
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           '${date.month}/${date.year}',
                           style: TextStyle(
                             fontSize: 9,
-                            color: isSelected ? Colors.white70 : Colors.grey,
+                            color: isCurrentDay
+                                ? Colors.white70
+                                : isCompleted
+                                    ? greenColor.withOpacity(.75)
+                                    : Colors.grey,
                           ),
                         ),
                       ],
@@ -1260,6 +1684,7 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
             ],
           ),
           _buildDelayProbabilityCard(),
+          _buildAdjustedScheduleCard(),
           _buildRecommendationsCard(),
           _buildCalendarTimeline(),
         ],
@@ -1294,7 +1719,7 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
             ? 'Analyzing...'
             : riskLevel == null
             ? 'Waiting AI'
-            : '$riskLevel - ${riskLabel ?? ''}';
+            : '${riskLabel ?? ''}';
 
     final delayText =
         isLoadingAI
@@ -1308,6 +1733,7 @@ class _DigitalTwinPageState extends State<DigitalTwinPage> {
     return Scaffold(
       backgroundColor: softBg,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Column(
           children: [
             Text(

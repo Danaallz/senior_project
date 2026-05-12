@@ -173,6 +173,46 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     selectedUnit = "unit";
   }
 
+// ================================
+  // MANAGER TASK NOTIFICATION
+  // Notifies the manager when a new task is created and assigned.
+  // This helps the manager track newly planned work from the notification center.
+  // ================================
+  Future<void> createTaskNotification({
+    required String taskDescription,
+    required String workerName,
+  }) async {
+    try {
+      final managerId = supabase.auth.currentUser?.id;
+      if (managerId == null || managerId.isEmpty || widget.projectId == null) {
+        return;
+      }
+
+      final existing = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', managerId)
+          .eq('project_id', widget.projectId!)
+          .eq('type', 'task_created')
+          .eq('message', '$taskDescription - $workerName')
+          .limit(1);
+
+      if (existing.isNotEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': managerId,
+        'project_id': widget.projectId!,
+        'type': 'task_created',
+        'title': 'New Task Created',
+        'message': 'Task "$taskDescription" has been assigned to $workerName.',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Task notification error: $e');
+    }
+  }
+
+  
   Future<void> saveTask() async {
     final description = descriptionController.text.trim();
 
@@ -251,6 +291,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       }
 
       await supabase.from('tasks').insert(data);
+
+      // ================================
+      // CREATE MANAGER TASK NOTIFICATION
+      // Sent after the task is saved successfully.
+      // ================================
+      await createTaskNotification(
+        taskDescription: description,
+        workerName: selectedWorker!['name']?.toString() ?? 'Worker',
+      );
 
       if (!mounted) return;
 

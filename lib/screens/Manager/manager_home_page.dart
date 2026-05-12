@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'project_screen.dart';
+import '../notification_bell.dart';
 
 class ManagerHomePage extends StatefulWidget {
   const ManagerHomePage({super.key});
@@ -35,6 +36,76 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     return value.startsWith('http://') || value.startsWith('https://');
   }
 
+  // ================================
+  // MANAGER NOTIFICATION HELPER
+  // Creates one notification for the manager and prevents duplicates
+  // for the same project/type.
+  // ================================
+  Future<void> createManagerNotificationOnce({
+    required String managerId,
+    required String projectId,
+    required String type,
+    required String title,
+    required String message,
+  }) async {
+    try {
+      final existing = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', managerId)
+          .eq('project_id', projectId)
+          .eq('type', type)
+          .limit(1);
+
+      if (existing.isNotEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': managerId,
+        'project_id': projectId,
+        'type': type,
+        'title': title,
+        'message': message,
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Manager notification error: $e');
+    }
+  }
+
+  // ================================
+  // PROJECT ASSIGNMENT NOTIFICATION
+  // When the admin approves an owner-created project and it appears
+  // under the assigned manager, the manager receives a notification once.
+  // ================================
+  Future<void> notifyManagerForApprovedAssignedProjects({
+    required String managerId,
+    required List<Map<String, dynamic>> assignedProjects,
+  }) async {
+    for (final project in assignedProjects) {
+      final projectId = cleanText(project['id']);
+      final projectName =
+          cleanText(project['name']).isEmpty ? 'Project' : cleanText(project['name']);
+      final status = cleanText(project['status']).toLowerCase();
+      final approval = cleanText(project['approval_status']).toLowerCase();
+
+      final isApprovedProject =
+          status == 'in progress' ||
+          status == 'active' ||
+          approval == 'approved';
+
+      if (projectId.isEmpty || !isApprovedProject) continue;
+
+      await createManagerNotificationOnce(
+        managerId: managerId,
+        projectId: projectId,
+        type: 'project_assigned',
+        title: 'New Project Assigned',
+        message:
+            '$projectName has been approved by the admin and assigned to you.',
+      );
+    }
+  }
+
   Future<void> loadManagerData() async {
     setState(() => isLoading = true);
 
@@ -60,11 +131,22 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           .eq('assigned_manager_id', currentUser.id)
           .order('created_at', ascending: false);
 
+      final loadedProjects = List<Map<String, dynamic>>.from(projectsResponse);
+
+      // ================================
+      // NOTIFY MANAGER ABOUT APPROVED ASSIGNED PROJECTS
+      // Runs after loading the manager projects and creates a notification once.
+      // ================================
+      await notifyManagerForApprovedAssignedProjects(
+        managerId: currentUser.id,
+        assignedProjects: loadedProjects,
+      );
+
       if (!mounted) return;
 
       setState(() {
         managerProfile = profileResponse;
-        projects = List<Map<String, dynamic>>.from(projectsResponse);
+        projects = loadedProjects;
         isLoading = false;
       });
     } catch (e) {
@@ -176,23 +258,13 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
               child: const Icon(Icons.menu, size: 30),
             ),
             const Spacer(),
-            const Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(Icons.notifications_outlined, size: 28),
-                Positioned(
-                  right: -4,
-                  top: -5,
-                  child: CircleAvatar(
-                    radius: 9,
-                    backgroundColor: Colors.red,
-                    child: Text(
-                      "3",
-                      style: TextStyle(color: Colors.white, fontSize: 10),
-                    ),
-                  ),
-                ),
-              ],
+            // ================================
+            // MANAGER NOTIFICATION BELL
+            // Opens NotificationsPage and shows unread manager notifications.
+            // ================================
+            NotificationBell(
+              color: primaryColor,
+              onClosed: loadManagerData,
             ),
           ],
         );

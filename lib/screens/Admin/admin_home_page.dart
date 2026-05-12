@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:senior_project/screens/Admin/add_user_page.dart';
+import 'package:senior_project/services/notification_service.dart';
 
 class AdminHomePage extends StatefulWidget {
   const AdminHomePage({super.key});
@@ -12,6 +13,7 @@ class AdminHomePage extends StatefulWidget {
 class _AdminHomePageState extends State<AdminHomePage>
     with SingleTickerProviderStateMixin {
   final supabase = Supabase.instance.client;
+  final NotificationService notificationService = NotificationService();
   late TabController _tabController;
 
   static const Color primaryColor = Color(0xff0d1b46);
@@ -83,6 +85,12 @@ class _AdminHomePageState extends State<AdminHomePage>
 
   Future<void> approveProject(String projectId) async {
     try {
+      final project = await supabase
+          .from('projects')
+          .select('id, name, owner_id')
+          .eq('id', projectId)
+          .maybeSingle();
+
       await supabase
           .from('projects')
           .update({
@@ -92,6 +100,19 @@ class _AdminHomePageState extends State<AdminHomePage>
             'approved_at': DateTime.now().toIso8601String(),
           })
           .eq('id', projectId);
+
+      final ownerId = project?['owner_id']?.toString();
+      final projectName = project?['name']?.toString() ?? 'Your project';
+
+      if (ownerId != null && ownerId.isNotEmpty) {
+        await notificationService.createNotification(
+          userId: ownerId,
+          projectId: projectId,
+          type: 'approved',
+          title: 'Good News!',
+          message: '$projectName has been approved and is now in progress.',
+        );
+      }
 
       await loadData();
     } catch (e) {
@@ -140,6 +161,12 @@ class _AdminHomePageState extends State<AdminHomePage>
     if (reason == null || reason.isEmpty) return;
 
     try {
+      final project = await supabase
+          .from('projects')
+          .select('id, name, owner_id')
+          .eq('id', projectId)
+          .maybeSingle();
+
       await supabase
           .from('projects')
           .update({
@@ -148,6 +175,19 @@ class _AdminHomePageState extends State<AdminHomePage>
             'rejection_reason': reason,
           })
           .eq('id', projectId);
+
+      final ownerId = project?['owner_id']?.toString();
+      final projectName = project?['name']?.toString() ?? 'Your project';
+
+      if (ownerId != null && ownerId.isNotEmpty) {
+        await notificationService.createNotification(
+          userId: ownerId,
+          projectId: projectId,
+          type: 'rejected',
+          title: 'Project Rejected',
+          message: '$projectName was rejected. Reason: $reason',
+        );
+      }
 
       await loadData();
     } catch (e) {
@@ -524,7 +564,7 @@ class _AdminHomePageState extends State<AdminHomePage>
           ),
           const SizedBox(width: 16),
           const Text(
-            "Hi, Sara Algamdi",
+            "Admin",
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -942,9 +982,9 @@ class _AdminHomePageState extends State<AdminHomePage>
           children: [
             const Expanded(
               child: Text(
-                "User Management",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
+              "User Management",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             ),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
@@ -1016,11 +1056,11 @@ class _AdminHomePageState extends State<AdminHomePage>
             child:
                 imageUrl == null || imageUrl.isEmpty
                     ? Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : "U",
-                      style: const TextStyle(
-                        color: primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
+              name.isNotEmpty ? name[0].toUpperCase() : "U",
+              style: const TextStyle(
+                color: primaryColor,
+                fontWeight: FontWeight.bold,
+              ),
                     )
                     : null,
           ),

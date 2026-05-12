@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'package:senior_project/screens/Site_Engineer/lib/screens/Site_Engineer/worker_tracking_api_service.dart';
-
 class EngEnvironmentPage extends StatefulWidget {
   final Map<String, dynamic> project;
 
@@ -15,86 +13,193 @@ class EngEnvironmentPage extends StatefulWidget {
 }
 
 class _EngEnvironmentPageState extends State<EngEnvironmentPage> {
-  final WorkerTrackingApiService trackingService = WorkerTrackingApiService();
+  static const Color primaryColor = Color(0xff0d1b46);
+  static const Color greenColor = Color(0xff18b26b);
+  static const Color orangeColor = Color(0xffff9800);
+  static const Color redColor = Color(0xffef4444);
+  static const Color blueColor = Color(0xff1e9cf0);
 
-  bool isLoadingApi = true;
+  bool isLoading = true;
+  String? errorMessage;
 
-  double apiTemperature = 0;
-  double apiHumidity = 0;
-  double apiWind = 0;
-  double apiRain = 0;
+  double? temperature;
+  double? humidity;
+  double? windSpeed;
+  double? rain;
+  String lastUpdate = '';
 
   double get latitude {
-    return double.tryParse(widget.project['latitude']?.toString() ?? '') ??
-        21.543333;
+    final value =
+        widget.project['latitude'] ??
+        widget.project['lat'] ??
+        widget.project['project_latitude'];
+
+    return double.tryParse(value?.toString() ?? '') ?? 21.543333;
   }
 
   double get longitude {
-    return double.tryParse(widget.project['longitude']?.toString() ?? '') ??
-        39.172779;
+    final value =
+        widget.project['longitude'] ??
+        widget.project['lng'] ??
+        widget.project['project_longitude'];
+
+    return double.tryParse(value?.toString() ?? '') ?? 39.172779;
   }
+
+  String get projectName {
+    final name = widget.project['name']?.toString().trim() ?? '';
+    return name.isEmpty ? 'Project Site' : name;
+  }
+
+  double get tempValue => temperature ?? 0;
+  double get humidityValue => humidity ?? 0;
+  double get windValue => windSpeed ?? 0;
+  double get rainValue => rain ?? 0;
 
   @override
   void initState() {
     super.initState();
-    loadWeatherApi();
+
+    // Delay one frame so the page renders first, then API loads.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadWeatherApi();
+    });
   }
 
   Future<void> loadWeatherApi() async {
-    setState(() => isLoadingApi = true);
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
 
     try {
       final url = Uri.parse(
         'https://api.open-meteo.com/v1/forecast'
         '?latitude=$latitude'
         '&longitude=$longitude'
-        '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,rain',
+        '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,rain'
+        '&timezone=auto',
       );
 
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final response = await http.get(url).timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
-        throw Exception("Weather API failed");
+        throw Exception('Weather API status code: ${response.statusCode}');
       }
 
-      final decoded = jsonDecode(response.body);
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
       final current = decoded['current'];
+
+      if (current == null || current is! Map) {
+        throw Exception('Weather API returned empty current data');
+      }
 
       if (!mounted) return;
 
       setState(() {
-        apiTemperature = (current['temperature_2m'] as num?)?.toDouble() ?? 0;
-        apiHumidity =
-            (current['relative_humidity_2m'] as num?)?.toDouble() ?? 0;
-        apiWind = (current['wind_speed_10m'] as num?)?.toDouble() ?? 0;
-        apiRain = (current['rain'] as num?)?.toDouble() ?? 0;
-        isLoadingApi = false;
+        temperature = toDouble(current['temperature_2m']);
+        humidity = toDouble(current['relative_humidity_2m']);
+        windSpeed = toDouble(current['wind_speed_10m']);
+        rain = toDouble(current['rain']);
+        lastUpdate = current['time']?.toString() ?? '';
+        isLoading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => isLoadingApi = false);
+
+      setState(() {
+        isLoading = false;
+        errorMessage =
+            'Unable to load Weather API data.\nCheck internet connection, Android INTERNET permission, and project location.';
+      });
+
+      debugPrint('Environment weather API error: $e');
     }
   }
 
-  String riskLabel({
-    required double firebaseTemp,
-    required double firebaseHumidity,
-  }) {
-    if (firebaseTemp >= 42 || apiWind >= 35 || apiRain > 0) {
-      return "High Risk";
-    }
-
-    if (firebaseTemp >= 36 || firebaseHumidity >= 80) {
-      return "Needs Attention";
-    }
-
-    return "Normal";
+  double toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
-  Color riskColor(String risk) {
-    if (risk == "High Risk") return Colors.red;
-    if (risk == "Needs Attention") return Colors.orange;
-    return Colors.green;
+  String get environmentStatus {
+    if (rainValue > 0 || tempValue >= 42 || windValue >= 35) {
+      return 'High Risk';
+    }
+
+    if (tempValue >= 36 || humidityValue >= 80 || windValue >= 28) {
+      return 'Needs Attention';
+    }
+
+    return 'Stable';
+  }
+
+  Color get statusColor {
+    if (environmentStatus == 'High Risk') return redColor;
+    if (environmentStatus == 'Needs Attention') return orangeColor;
+    return greenColor;
+  }
+
+  IconData get statusIcon {
+    if (environmentStatus == 'High Risk') return Icons.warning_amber_rounded;
+    if (environmentStatus == 'Needs Attention') {
+      return Icons.info_outline_rounded;
+    }
+    return Icons.verified_rounded;
+  }
+
+  String get statusDescription {
+    if (rainValue > 0) {
+      return 'Rain is detected at the construction site. Outdoor activities may be affected.';
+    }
+
+    if (tempValue >= 42) {
+      return 'Extreme heat may affect worker safety and productivity.';
+    }
+
+    if (windValue >= 35) {
+      return 'Strong wind may affect lifting and site operations.';
+    }
+
+    if (tempValue >= 36) {
+      return 'High temperature requires close monitoring.';
+    }
+
+    if (humidityValue >= 80) {
+      return 'High humidity may affect worker comfort and site conditions.';
+    }
+
+    if (windValue >= 28) {
+      return 'Moderate wind requires monitoring.';
+    }
+
+    return 'Weather conditions are currently suitable for site operations.';
+  }
+
+  String get recommendation {
+    if (rainValue > 0) {
+      return 'Review outdoor activities and protect exposed materials.';
+    }
+
+    if (tempValue >= 42) {
+      return 'Reduce outdoor exposure and increase hydration breaks.';
+    }
+
+    if (windValue >= 35) {
+      return 'Avoid crane or lifting operations until wind speed decreases.';
+    }
+
+    if (tempValue >= 36 || humidityValue >= 80) {
+      return 'Monitor workers closely and schedule rest breaks.';
+    }
+
+    if (windValue >= 28) {
+      return 'Continue work with wind monitoring.';
+    }
+
+    return 'Continue normal monitoring.';
   }
 
   @override
@@ -102,275 +207,454 @@ class _EngEnvironmentPageState extends State<EngEnvironmentPage> {
     return Scaffold(
       backgroundColor: const Color(0xfff7f9fc),
       appBar: AppBar(
-        title: const Text("Environment Monitoring"),
+        title: const Text(
+          'Environment Monitoring',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
           IconButton(
             onPressed: loadWeatherApi,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
-      body: StreamBuilder<List<WorkerSensorReading>>(
-        stream: trackingService.streamFirebaseSensorReadings(),
-        builder: (context, snapshot) {
-          final readings = snapshot.data ?? [];
-
-          if (readings.isEmpty) {
-            return const Center(
-              child: Text("No Firebase environment data found."),
-            );
-          }
-
-          final latest = readings.first;
-
-          final risk = riskLabel(
-            firebaseTemp: latest.temperature,
-            firebaseHumidity: latest.humidity,
-          );
-
-          final color = riskColor(risk);
-
-          return ListView(
-            padding: const EdgeInsets.all(18),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: loadWeatherApi,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
             children: [
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [const Color(0xff0d1b46), color.withOpacity(0.85)],
-                  ),
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Environment Comparison",
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      risk,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 28,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      latest.timestamp.isEmpty
-                          ? "Firebase latest saved reading + Weather API"
-                          : "Firebase: ${latest.timestamp}",
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-              const Text(
-                "Firebase Site Sensor Data",
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: envCard(
-                      title: "Site Temperature",
-                      value: "${latest.temperature.toStringAsFixed(1)}°C",
-                      icon: Icons.thermostat,
-                      color: Colors.orange,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: envCard(
-                      title: "Site Humidity",
-                      value: "${latest.humidity.toStringAsFixed(0)}%",
-                      icon: Icons.water_drop,
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 22),
-              const Text(
-                "Weather API Data",
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: envCard(
-                      title: "API Temperature",
-                      value:
-                          isLoadingApi
-                              ? "Loading"
-                              : "${apiTemperature.toStringAsFixed(1)}°C",
-                      icon: Icons.sunny,
-                      color: Colors.deepOrange,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: envCard(
-                      title: "API Humidity",
-                      value:
-                          isLoadingApi
-                              ? "Loading"
-                              : "${apiHumidity.toStringAsFixed(0)}%",
-                      icon: Icons.cloud,
-                      color: Colors.indigo,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: envCard(
-                      title: "Wind Speed",
-                      value:
-                          isLoadingApi
-                              ? "Loading"
-                              : "${apiWind.toStringAsFixed(1)} km/h",
-                      icon: Icons.air,
-                      color: Colors.teal,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: envCard(
-                      title: "Rain",
-                      value:
-                          isLoadingApi
-                              ? "Loading"
-                              : "${apiRain.toStringAsFixed(1)} mm",
-                      icon: Icons.water,
-                      color: Colors.blueGrey,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 22),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Environment Analysis",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 17,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    analysisRow(
-                      "Heat condition",
-                      latest.temperature >= 40 ? "High heat" : "Normal",
-                    ),
-                    analysisRow(
-                      "Humidity condition",
-                      latest.humidity >= 80 ? "High humidity" : "Stable",
-                    ),
-                    analysisRow(
-                      "Wind condition",
-                      apiWind >= 30 ? "Strong wind" : "Normal",
-                    ),
-                    analysisRow(
-                      "Rain condition",
-                      apiRain > 0 ? "Rain detected" : "No rain",
-                    ),
-                    analysisRow(
-                      "Recommendation",
-                      risk == "High Risk"
-                          ? "Reduce outdoor exposure"
-                          : risk == "Needs Attention"
-                          ? "Monitor workers closely"
-                          : "Environment is stable",
-                    ),
-                  ],
-                ),
-              ),
+              if (isLoading) buildLoadingCard(),
+              if (!isLoading && errorMessage != null) buildErrorCard(),
+              if (!isLoading && errorMessage == null) ...[
+                buildHeroCard(),
+                const SizedBox(height: 12),
+                buildLocationInfoCard(),
+                const SizedBox(height: 10),
+                buildWeatherGrid(),
+                const SizedBox(height: 10),
+                buildAnalysisCard(),
+                const SizedBox(height: 10),
+                buildRecommendationCard(),
+              ],
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
-  Widget analysisRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
+  Widget buildLoadingCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: cardDecoration(),
+      child: const Column(
         children: [
-          Expanded(
-            child: Text(title, style: TextStyle(color: Colors.grey.shade700)),
+          SizedBox(height: 8),
+          CircularProgressIndicator(),
+          SizedBox(height: 18),
+          Text(
+            'Loading live weather data...',
+            style: TextStyle(fontWeight: FontWeight.w800),
           ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'Reading project location from Weather API',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey),
+          ),
+          SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  Widget envCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
+  Widget buildErrorCard() {
     return Container(
-      constraints: const BoxConstraints(minHeight: 130),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
+      decoration: cardDecoration(),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.red),
+          const SizedBox(height: 14),
+          const Text(
+            'Weather data is unavailable',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            errorMessage!,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade700, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Location: ${widget.project['location']?.toString() ?? 'Construction Site'}',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
+            onPressed: loadWeatherApi,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildHeroCard() {
+    return Container(
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          colors: [primaryColor, statusColor.withOpacity(.92)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: statusColor.withOpacity(.22),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 21,
-            backgroundColor: color.withOpacity(.12),
-            child: Icon(icon, color: color),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: Colors.white.withOpacity(.17),
+                child: Icon(statusIcon, color: Colors.white, size: 30),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.18),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Text(
+                  'Open-Meteo API',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const Spacer(),
+          const SizedBox(height: 22),
           Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
+            environmentStatus,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 31,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
-            title,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.w600,
+            projectName,
+            style: const TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            statusDescription,
+            style: const TextStyle(color: Colors.white, height: 1.4),
+          ),
+          if (lastUpdate.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(Icons.access_time, color: Colors.white70, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Last update: $lastUpdate',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget buildLocationInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: cardDecoration(),
+      child: Row(
+        children: [
+          const Icon(Icons.location_on_rounded, color: primaryColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.project['location']?.toString() ?? 'Construction Site',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget buildWeatherGrid() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Live Weather Data',
+          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: weatherCard(
+                'Temperature',
+                '${tempValue.toStringAsFixed(1)}°C',
+                Icons.thermostat_rounded,
+                Colors.deepOrange,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: weatherCard(
+                'Humidity',
+                '${humidityValue.toStringAsFixed(0)}%',
+                Icons.water_drop_rounded,
+                Colors.indigo,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: weatherCard(
+                'Wind Speed',
+                '${windValue.toStringAsFixed(1)} km/h',
+                Icons.air_rounded,
+                Colors.teal,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: weatherCard(
+                'Rain',
+                '${rainValue.toStringAsFixed(1)} mm',
+                Icons.water_rounded,
+                Colors.blueGrey,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget buildAnalysisCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          titleRow(Icons.analytics_outlined, 'Environment Analysis', blueColor),
+          const SizedBox(height: 16),
+          analysisRow(
+            'Heat condition',
+            tempValue >= 42
+                ? 'Extreme heat'
+                : tempValue >= 36
+                    ? 'High temperature'
+                    : 'Normal',
+            tempValue >= 36 ? orangeColor : greenColor,
+          ),
+          analysisRow(
+            'Humidity condition',
+            humidityValue >= 80 ? 'High humidity' : 'Stable',
+            humidityValue >= 80 ? orangeColor : greenColor,
+          ),
+          analysisRow(
+            'Wind condition',
+            windValue >= 35
+                ? 'Strong wind'
+                : windValue >= 28
+                    ? 'Moderate wind'
+                    : 'Normal',
+            windValue >= 28 ? orangeColor : greenColor,
+          ),
+          analysisRow(
+            'Rain condition',
+            rainValue > 0 ? 'Rain detected' : 'No rain',
+            rainValue > 0 ? redColor : greenColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildRecommendationCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          titleRow(Icons.task_alt_rounded, 'Recommended Action', statusColor),
+          const SizedBox(height: 12),
+          Text(
+            recommendation,
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'All values in this page come from the live Weather API based on the project location.',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              height: 1.4,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget weatherCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      height: 158,
+      padding: const EdgeInsets.all(14),
+      decoration: cardDecoration(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: color.withOpacity(.12),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget titleRow(IconData icon, String title, Color color) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: color.withOpacity(.12),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget analysisRow(String title, String value, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 11),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(.14)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(color: color, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: const Color(0xffeeeeee)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(.035),
+          blurRadius: 12,
+          offset: const Offset(0, 5),
+        ),
+      ],
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:senior_project/services/supabase_service.dart';
 
@@ -22,6 +23,7 @@ class _AddProjectMaterialPageState extends State<AddProjectMaterialPage> {
   final _formKey = GlobalKey<FormState>();
 
   final SupabaseService supabaseService = SupabaseService();
+  final supabase = Supabase.instance.client;
 
   static const Color primaryColor = Color(0xff0d1b46);
 
@@ -173,6 +175,62 @@ class _AddProjectMaterialPageState extends State<AddProjectMaterialPage> {
     }
   }
 
+  // ================================
+  // MANAGER MATERIAL NOTIFICATION
+  // Notifies the manager when a material is delayed, missing, pending,
+  // or when the available quantity is lower than the required quantity.
+  // ================================
+  Future<void> createMaterialNotification({
+    required int requiredQuantity,
+    required int availableQuantity,
+  }) async {
+    try {
+      final managerId = supabase.auth.currentUser?.id;
+      if (managerId == null || managerId.isEmpty) return;
+
+      final materialName =
+          cleanText(selectedMaterial?['name']).isEmpty
+              ? 'Material'
+              : cleanText(selectedMaterial?['name']);
+
+      final status = deliveryStatus.toLowerCase();
+      final shortage = availableQuantity < requiredQuantity;
+      final hasDeliveryIssue =
+          status == 'pending' ||
+          status == 'requested' ||
+          status == 'delayed' ||
+          status == 'missing';
+
+      if (!shortage && !hasDeliveryIssue) return;
+
+      final type = hasDeliveryIssue ? 'material_issue' : 'material_shortage';
+
+      final existing = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', managerId)
+          .eq('project_id', widget.projectId)
+          .eq('type', type)
+          .eq('message', '$materialName - $deliveryStatus')
+          .limit(1);
+
+      if (existing.isNotEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': managerId,
+        'project_id': widget.projectId,
+        'type': type,
+        'title': hasDeliveryIssue ? 'Material Alert' : 'Material Shortage',
+        'message': hasDeliveryIssue
+            ? '$materialName delivery status is $deliveryStatus.'
+            : '$materialName available quantity is below the required quantity.',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Material notification error: $e');
+    }
+  }
+
   String? validateSelectedQuantity(int? value, {bool allowZero = true}) {
     if (value == null) {
       return 'Please select a quantity';
@@ -258,6 +316,16 @@ class _AddProjectMaterialPageState extends State<AddProjectMaterialPage> {
           deliveryStatus: deliveryStatus,
         );
       }
+
+      // ================================
+      // CREATE MANAGER MATERIAL NOTIFICATION
+      // Sends a notification if the saved material has a delivery issue
+      // or a quantity shortage.
+      // ================================
+      await createMaterialNotification(
+        requiredQuantity: required,
+        availableQuantity: available,
+      );
 
       if (mounted) {
         Navigator.pop(context, true);

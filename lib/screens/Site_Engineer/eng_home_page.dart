@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:senior_project/screens/digital_twin_page.dart';
-import 'package:senior_project/screens/Manager/alerts_page.dart';
 import 'Eng_main_layout.dart';
 import 'eng_attendance.dart';
 import 'eng_workers_tab.dart';
@@ -78,7 +77,7 @@ class _EngHomePageState extends State<EngHomePage>
           ],
         );
       },
-      onNotificationTap: () => openPage(const AlertsPage()),
+      onNotificationTap: () {},
       onIotTap: () => openPage(const EngSensorsDashboard()),
       onDigitalTwinTap:
           () => openPage(DigitalTwinPage(project: widget.project)),

@@ -1,6 +1,7 @@
 // lib/screens/owner_project_screen.dart
 
 import 'package:flutter/material.dart';
+import '../notification_bell.dart';
 
 class OwnerProjectScreen extends StatelessWidget {
   final Widget body;
@@ -57,12 +58,12 @@ class OwnerProjectScreen extends StatelessWidget {
                   onPressed: () => Navigator.pop(context),
                 )
                 : null,
-        actions: const [
+        actions: [
           Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(
-              Icons.notifications_none,
+            padding: const EdgeInsets.only(right: 8),
+            child: NotificationBell(
               color: OwnerProjectScreen.primaryColor,
+              onClosed: onProfileUpdated,
             ),
           ),
         ],

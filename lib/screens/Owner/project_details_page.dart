@@ -2,14 +2,15 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:senior_project/screens/Manager/project_materials_page.dart';
+import 'owner_project_materials_page.dart';
 import 'package:senior_project/screens/digital_twin_page.dart';
 import 'package:senior_project/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../Manager/project_equipment_page.dart';
+import 'owner_project_equipment_page.dart';
 import 'owner_project_page.dart';
+import '../notification_bell.dart';
 
 class ProjectDetailsPage extends StatefulWidget {
   final String projectId;
@@ -35,6 +36,13 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   Map<String, dynamic>? manager;
   Map<String, dynamic>? digitalTwinSnapshot;
 
+  // ================================
+  // PROJECT INSIGHTS COUNTERS
+  // Stores real counts loaded from Supabase for this project.
+  // ================================
+  int materialCount = 0;
+  int equipmentCount = 0;
+
   String selectedTab = "home";
   String searchQuery = '';
 
@@ -53,6 +61,48 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     return url.startsWith('http://') || url.startsWith('https://');
   }
 
+  // ================================
+  // SAFE PROJECT RECORD COUNTER
+  // Counts records by project_id.
+  // If the table does not exist or the column name is different,
+  // it returns 0 instead of crashing the page.
+  // ================================
+  Future<int> countProjectRows(String tableName) async {
+    try {
+      final response = await supabase
+          .from(tableName)
+          .select('id')
+          .eq('project_id', widget.projectId);
+
+      return List<Map<String, dynamic>>.from(response).length;
+    } catch (e) {
+      debugPrint("Count error in $tableName: $e");
+      return 0;
+    }
+  }
+
+  // ================================
+  // MATERIAL + EQUIPMENT COUNTS
+  // Tries the most common table names.
+  // If your project uses different names, change them here only.
+  // ================================
+  Future<Map<String, int>> loadInsightCounts() async {
+    int materials = await countProjectRows('project_materials');
+    if (materials == 0) {
+      materials = await countProjectRows('materials');
+    }
+
+    int equipment = await countProjectRows('project_equipment');
+    if (equipment == 0) {
+      equipment = await countProjectRows('equipment');
+    }
+
+    return {
+      'materials': materials,
+      'equipment': equipment,
+    };
+  }
+
   Future<void> loadProject() async {
     try {
       final projectData = await supabaseService.getProjectById(
@@ -60,7 +110,16 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       );
 
       Map<String, dynamic>? managerData;
-      final managerId = cleanText(projectData?['assigned_manager_id']);
+      // ================================
+      // MANAGER ID COMPATIBILITY FIX
+      // Supports both database column names:
+      // - assigned_manager_id
+      // - manager_id
+      // This keeps your teammate's code working while supporting your latest schema.
+      // ================================
+      final managerId = cleanText(projectData?['assigned_manager_id']).isNotEmpty
+          ? cleanText(projectData?['assigned_manager_id'])
+          : cleanText(projectData?['manager_id']);
 
       final snapshotData = await supabaseService.getLatestDigitalTwinSnapshot(
         widget.projectId,
@@ -76,6 +135,12 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           .eq('project_id', widget.projectId)
           .order('created_at', ascending: false);
 
+      // ================================
+      // LOAD REAL MATERIAL + EQUIPMENT COUNTS
+      // This fixes the issue where Materials and Equipment always show 0.
+      // ================================
+      final insightCounts = await loadInsightCounts();
+
       if (!mounted) return;
 
       setState(() {
@@ -83,6 +148,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         manager = managerData;
         digitalTwinSnapshot = snapshotData;
         sitePhotos = List<Map<String, dynamic>>.from(photosResponse);
+        materialCount = insightCounts['materials'] ?? 0;
+        equipmentCount = insightCounts['equipment'] ?? 0;
         isLoading = false;
       });
     } catch (e) {
@@ -101,6 +168,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     }
   }
 
+  // ================================
+  // WHATSAPP MANAGER CHAT
+  // Opens WhatsApp chat with the assigned project manager
+  // using the manager phone number from profiles.
+  // ================================
   Future<void> openManagerWhatsApp() async {
     if (manager == null) {
       ScaffoldMessenger.of(
@@ -147,6 +219,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     });
   }
 
+  // ================================
+  // SITE PHOTOS UPLOAD
+  // Allows the owner to add site photos.
+  // The image is uploaded to Supabase Storage and saved in project_photos.
+  // ================================
   Future<void> pickAndUploadSitePhoto() async {
     try {
       final picker = ImagePicker();
@@ -221,7 +298,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
     final status =
         cleanText(project!['status']).isEmpty
-            ? "pending"
+            ? "In Progress"
             : cleanText(project!['status']);
 
     final progress =
@@ -232,8 +309,13 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         0;
 
     final totalLabor = project!['total_labor'] ?? 0;
-    final totalMaterial = project!['total_material'] ?? 0;
-    final totalEquipment = project!['total_equipment'] ?? 0;
+
+    // ================================
+    // HOME INSIGHTS VALUES
+    // Use real Supabase counts loaded in loadProject().
+    // ================================
+    final totalMaterial = materialCount;
+    final totalEquipment = equipmentCount;
 
     final managerName =
         manager == null
@@ -294,9 +376,18 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
                 const Spacer(),
 
-                const Padding(
-                  padding: EdgeInsets.only(right: 16),
-                  child: Icon(Icons.notifications_none, color: primaryColor),
+                // ================================
+                // NOTIFICATION BELL INTEGRATION
+                // Replaces the static notification icon with a clickable bell.
+                // Opens NotificationsPage and shows unread notification badge.
+                // onClosed refreshes project data after returning.
+                // ================================
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: NotificationBell(
+                    color: primaryColor,
+                    onClosed: loadProject,
+                  ),
                 ),
               ],
             );
@@ -311,22 +402,37 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              OwnerProjectHeader(
+              // ================================
+              // CUSTOM PROJECT HEADER
+              // Makes the status badge green when the project is In Progress.
+              // ================================
+              buildProjectHeader(
                 projectName: projectName,
                 location: location,
                 imageUrl: imageUrl,
                 status: status,
               ),
               const SizedBox(height: 24),
-              OwnerProjectTabBar(
-                selectedTab: selectedTab,
-                onTabSelected: (value) {
-                  setState(() {
-                    selectedTab = value;
-                  });
-                },
+              Container(
+                padding: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      buildTab("home", "Home"),
+                      buildTab("digital_twin", "Digital Twin"),
+                      buildTab("material", "Material"),
+                      buildTab("equipment", "Equipment"),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 16),
               if (selectedTab == "home")
                 buildHomeSection(
                   totalLabor: totalLabor,
@@ -343,7 +449,12 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               if (selectedTab == "material")
                 SizedBox(
                   height: embeddedSectionHeight,
-                  child: ProjectMaterialsPage(
+                  // ================================
+                  // OWNER READ-ONLY MATERIALS PAGE
+                  // The owner can view materials and totals only.
+                  // No add, edit, or delete actions are available here.
+                  // ================================
+                  child: OwnerProjectMaterialsPage(
                     projectId: widget.projectId,
                     projectName: projectName,
                   ),
@@ -351,7 +462,12 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               if (selectedTab == "equipment")
                 SizedBox(
                   height: embeddedSectionHeight,
-                  child: ProjectEquipmentPage(
+                  // ================================
+                  // OWNER READ-ONLY EQUIPMENT PAGE
+                  // The owner can view equipment and live map only.
+                  // No add, edit, or delete actions are available here.
+                  // ================================
+                  child: OwnerProjectEquipmentPage(
                     projectId: widget.projectId,
                     projectName: projectName,
                     projectLatitude: projectLatitude,
@@ -362,6 +478,96 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           ),
         ),
       ),
+    );
+  }
+
+
+  // ================================
+  // PROJECT HEADER
+  // Same content as OwnerProjectHeader, but with a green In Progress badge.
+  // ================================
+  Widget buildProjectHeader({
+    required String projectName,
+    required String location,
+    required String imageUrl,
+    required String status,
+  }) {
+    final normalizedStatus = status.toLowerCase();
+    final isInProgress = normalizedStatus.contains('progress');
+
+    final statusColor = isInProgress ? greenColor : const Color(0xffff8a00);
+    final statusBg =
+        isInProgress ? greenColor.withOpacity(.12) : const Color(0xfffff3e4);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: isValidImageUrl(imageUrl)
+              ? Image.network(
+                  imageUrl,
+                  width: 96,
+                  height: 96,
+                  fit: BoxFit.cover,
+                )
+              : Container(
+                  width: 96,
+                  height: 96,
+                  color: Colors.grey.shade200,
+                  child: const Icon(
+                    Icons.apartment_rounded,
+                    color: primaryColor,
+                    size: 40,
+                  ),
+                ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                projectName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                location,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -393,14 +599,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
             ),
             Spacer(),
-            Text(
-              "view all >",
-              style: TextStyle(
-                color: primaryColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
           ],
         ),
 
@@ -537,14 +735,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             Spacer(),
-            Text(
-              "view all >",
-              style: TextStyle(
-                color: primaryColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
           ],
         ),
 
@@ -567,6 +757,38 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget buildTab(String key, String title) {
+    final isSelected = selectedTab == key;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          selectedTab = key;
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 24),
+        padding: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isSelected ? primaryColor : Colors.transparent,
+              width: 4,
+            ),
+          ),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: isSelected ? primaryColor : Colors.grey,
+          ),
+        ),
+      ),
     );
   }
 
@@ -664,6 +886,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
+  // ================================
+  // ASSIGNED MANAGER PROGRESS CIRCLE
+  // Displays project progress using latest digital_twin_snapshots
+  // if available, otherwise falls back to projects.progress.
+  // ================================
   Widget progressCircle(int progress) {
     final safeProgress = progress.clamp(0, 100);
 
@@ -695,7 +922,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                       "$safeProgress%",
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 20,
+                        fontSize: 26,
                       ),
                     ),
                     const Text("Complete", style: TextStyle(fontSize: 10)),
@@ -757,8 +984,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   Widget statCard(String title, String value, Color color) {
     return Expanded(
       child: Container(
-        constraints: const BoxConstraints(minHeight: 78),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        constraints: const BoxConstraints(minHeight: 92),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(color: Colors.grey.shade200),
@@ -774,8 +1001,13 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 11)),
-            const SizedBox(height: 10),
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -784,11 +1016,10 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                     style: TextStyle(
                       color: color,
                       fontWeight: FontWeight.bold,
-                      fontSize: 20,
+                      fontSize: 26,
                     ),
                   ),
                 ),
-                const Icon(Icons.chevron_right, size: 18),
               ],
             ),
           ],
@@ -825,6 +1056,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
+  // ================================
+  // ADD PHOTO BUTTON
+  // First item in Site Photos list.
+  // Pressing it opens gallery and uploads selected image.
+  // ================================
   Widget addPhotoBox() {
     return GestureDetector(
       onTap: isUploadingPhoto ? null : pickAndUploadSitePhoto,

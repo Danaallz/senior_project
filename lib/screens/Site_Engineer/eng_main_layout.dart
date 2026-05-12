@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../notification_bell.dart';
 
 class EngMainLayout extends StatefulWidget {
   final Map<String, dynamic> project;
@@ -253,29 +254,13 @@ class _EngMainLayoutState extends State<EngMainLayout> {
 
                   const Spacer(),
 
-                  GestureDetector(
-                    onTap: widget.onNotificationTap,
-                    child: const Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Icon(Icons.notifications_outlined, size: 28),
-                        Positioned(
-                          right: -4,
-                          top: -5,
-                          child: CircleAvatar(
-                            radius: 9,
-                            backgroundColor: Colors.red,
-                            child: Text(
-                              "3",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  // ================================
+                  // SITE ENGINEER NOTIFICATION BELL
+                  // Replaces the static alert icon with the real notification bell.
+                  // ================================
+                  NotificationBell(
+                    color: primaryColor,
+                    onClosed: loadEngineerProfile,
                   ),
                 ],
               ),

@@ -143,6 +143,49 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
     }
   }
 
+  // ================================
+  // MANAGER WORKER NOTIFICATION
+  // Notifies the manager when a worker or site engineer is added to the project.
+  // ================================
+  Future<void> createWorkerNotification() async {
+    try {
+      final managerId = supabase.auth.currentUser?.id;
+      final projectId = widget.projectId;
+
+      if (managerId == null || managerId.isEmpty || projectId == null) {
+        return;
+      }
+
+      final workerName = nameController.text.trim().isEmpty
+          ? 'Worker'
+          : nameController.text.trim();
+
+      final role = selectedRole ?? 'Worker';
+
+      final existing = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', managerId)
+          .eq('project_id', projectId)
+          .eq('type', 'worker_added')
+          .eq('message', '$workerName - $role')
+          .limit(1);
+
+      if (existing.isNotEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': managerId,
+        'project_id': projectId,
+        'type': 'worker_added',
+        'title': 'Worker Added',
+        'message': '$workerName has been added as $role.',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Worker notification error: $e');
+    }
+  }
+
   Future<void> saveWorker() async {
     try {
       if (!_formKey.currentState!.validate()) return;
@@ -175,6 +218,12 @@ class _AddWorkerPageState extends State<AddWorkerPage> {
           imageFile: selectedImage,
         );
       }
+
+      // ================================
+      // CREATE MANAGER WORKER NOTIFICATION
+      // Sent after the worker/site engineer is added successfully.
+      // ================================
+      await createWorkerNotification();
 
       if (!mounted) return;
 

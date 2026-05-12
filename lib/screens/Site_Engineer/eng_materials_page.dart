@@ -80,6 +80,31 @@ class _EngMaterialsPageState extends State<EngMaterialsPage> {
     return Colors.grey;
   }
 
+  // ================================
+  // MATERIAL REQUEST NOTIFICATION
+  // Confirms to the site engineer that a material request was sent.
+  // ================================
+  Future<void> createMaterialRequestNotification({
+    required String itemName,
+    required int quantity,
+  }) async {
+    try {
+      final engineerId = supabase.auth.currentUser?.id;
+      if (engineerId == null || engineerId.isEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': engineerId,
+        'project_id': projectId,
+        'type': 'material_request_sent',
+        'title': 'Material Request Sent',
+        'message': 'Your request for $quantity more $itemName has been submitted.',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Material request notification error: $e');
+    }
+  }
+
   Future<void> requestMore(Map<String, dynamic> item) async {
     final quantityController = TextEditingController();
     final noteController = TextEditingController();
@@ -174,6 +199,15 @@ class _EngMaterialsPageState extends State<EngMaterialsPage> {
                 : noteController.text.trim(),
         'status': 'pending',
       });
+
+      // ================================
+      // CREATE MATERIAL REQUEST NOTIFICATION
+      // Confirms request submission for the site engineer.
+      // ================================
+      await createMaterialRequestNotification(
+        itemName: itemName,
+        quantity: quantity,
+      );
 
       if (!mounted) return;
 

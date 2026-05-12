@@ -3,12 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:senior_project/screens/digital_twin_page.dart';
 import 'package:senior_project/screens/Manager/Workers.dart';
-import 'package:senior_project/screens/Manager/alerts_page.dart';
 import 'package:senior_project/screens/Manager/manager_attendance.dart';
 import 'package:senior_project/screens/Manager/manager_home_screen.dart';
 import 'package:senior_project/screens/Manager/manager_tasks_tab.dart';
 import 'package:senior_project/screens/Manager/project_equipment_page.dart';
 import 'package:senior_project/screens/Manager/project_materials_page.dart';
+import '../notification_bell.dart';
 
 class ProjectScreen extends StatefulWidget {
   final Map<String, dynamic> project;
@@ -246,31 +246,14 @@ class _ProjectScreenState extends State<ProjectScreen>
                   child: const Icon(Icons.menu, size: 28),
                 ),
                 const Spacer(),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AlertsPage()),
-                    );
-                  },
-                  child: const Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Icon(Icons.notifications_outlined, size: 28),
-                      Positioned(
-                        right: -4,
-                        top: -5,
-                        child: CircleAvatar(
-                          radius: 9,
-                          backgroundColor: Colors.red,
-                          child: Text(
-                            "3",
-                            style: TextStyle(color: Colors.white, fontSize: 10),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                // ================================
+                // MANAGER NOTIFICATION BELL
+                // Replaces the static alerts icon with the real notification bell.
+                // It opens NotificationsPage and shows unread count for the manager.
+                // ================================
+                NotificationBell(
+                  color: primaryColor,
+                  onClosed: loadManagerProfile,
                 ),
               ],
             ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:senior_project/services/supabase_service.dart';
 
@@ -23,6 +24,7 @@ class _AddProjectEquipmentPageState extends State<AddProjectEquipmentPage> {
   final _formKey = GlobalKey<FormState>();
 
   final SupabaseService supabaseService = SupabaseService();
+  final supabase = Supabase.instance.client;
 
   static const Color primaryColor = Color(0xff0d1b46);
 
@@ -174,6 +176,59 @@ class _AddProjectEquipmentPageState extends State<AddProjectEquipmentPage> {
     }
   }
 
+  // ================================
+  // MANAGER EQUIPMENT NOTIFICATION
+  // Notifies the manager when equipment is damaged, under maintenance,
+  // paused, or has lower available quantity than required.
+  // ================================
+  Future<void> createEquipmentNotification({
+    required int requiredQuantity,
+    required int availableQuantity,
+  }) async {
+    try {
+      final managerId = supabase.auth.currentUser?.id;
+      if (managerId == null || managerId.isEmpty) return;
+
+      final equipmentName =
+          cleanText(selectedEquipment?['name']).isEmpty
+              ? 'Equipment'
+              : cleanText(selectedEquipment?['name']);
+
+      final status = conditionStatus.toLowerCase();
+      final shortage = availableQuantity < requiredQuantity;
+      final hasConditionIssue =
+          status == 'paused' || status == 'maintenance' || status == 'damaged';
+
+      if (!shortage && !hasConditionIssue) return;
+
+      final type = hasConditionIssue ? 'equipment_issue' : 'equipment_shortage';
+
+      final existing = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', managerId)
+          .eq('project_id', widget.projectId)
+          .eq('type', type)
+          .eq('message', '$equipmentName - $conditionStatus')
+          .limit(1);
+
+      if (existing.isNotEmpty) return;
+
+      await supabase.from('notifications').insert({
+        'user_id': managerId,
+        'project_id': widget.projectId,
+        'type': type,
+        'title': hasConditionIssue ? 'Equipment Alert' : 'Equipment Shortage',
+        'message': hasConditionIssue
+            ? '$equipmentName condition is $conditionStatus.'
+            : '$equipmentName available quantity is below the required quantity.',
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint('Equipment notification error: $e');
+    }
+  }
+
   String? validateSelectedQuantity(int? value, {bool allowZero = true}) {
     if (value == null) {
       return 'Please select a quantity';
@@ -279,6 +334,16 @@ class _AddProjectEquipmentPageState extends State<AddProjectEquipmentPage> {
           challanNo: challanController.text.trim(),
         );
       }
+
+      // ================================
+      // CREATE MANAGER EQUIPMENT NOTIFICATION
+      // Sends a notification if the saved equipment has a condition issue
+      // or quantity shortage.
+      // ================================
+      await createEquipmentNotification(
+        requiredQuantity: required,
+        availableQuantity: available,
+      );
 
       if (mounted) {
         Navigator.pop(context, true);
