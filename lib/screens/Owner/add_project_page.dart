@@ -79,7 +79,6 @@ class _AddProjectPageState extends State<AddProjectPage> {
     nameController.text = p['name']?.toString() ?? '';
     locationController.text = p['location']?.toString() ?? '';
     selectedCity = p['city']?.toString();
-
     selectedManagerId = p['assigned_manager_id']?.toString();
 
     final lat = double.tryParse(p['latitude']?.toString() ?? '');
@@ -115,9 +114,7 @@ class _AddProjectPageState extends State<AddProjectPage> {
       });
     } catch (e) {
       debugPrint("Load managers error: $e");
-
       if (!mounted) return;
-
       showMessage("Unable to load managers: $e");
     } finally {
       if (mounted) {
@@ -462,6 +459,11 @@ class _AddProjectPageState extends State<AddProjectPage> {
   }
 
   Widget managerDropdown() {
+    final managerIds = managers.map((m) => m['id'].toString()).toList();
+
+    final safeValue =
+        managerIds.contains(selectedManagerId) ? selectedManagerId : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -471,7 +473,7 @@ class _AddProjectPageState extends State<AddProjectPage> {
         ),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          value: selectedManagerId,
+          value: safeValue,
           isExpanded: true,
           hint: Text(
             isLoadingManagers ? "Loading managers..." : "Select manager",
@@ -496,14 +498,16 @@ class _AddProjectPageState extends State<AddProjectPage> {
 
                 return DropdownMenuItem<String>(
                   value: manager['id'].toString(),
-                  child: Text(managerName),
+                  child: Text(managerName, overflow: TextOverflow.ellipsis),
                 );
               }).toList(),
           onChanged:
               isLoadingManagers
                   ? null
                   : (value) {
-                    setState(() => selectedManagerId = value);
+                    setState(() {
+                      selectedManagerId = value;
+                    });
                   },
         ),
       ],
@@ -511,13 +515,17 @@ class _AddProjectPageState extends State<AddProjectPage> {
   }
 
   Widget cityDropdown() {
+    final cityNames = cityLocations.keys.toList();
+
+    final safeValue = cityNames.contains(selectedCity) ? selectedCity : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text("City", style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          value: selectedCity,
+          value: safeValue,
           isExpanded: true,
           hint: const Text("Select city"),
           validator: (value) => value == null ? "City is required" : null,
@@ -531,11 +539,13 @@ class _AddProjectPageState extends State<AddProjectPage> {
             ),
           ),
           items:
-              cityLocations.keys.map((city) {
-                return DropdownMenuItem(value: city, child: Text(city));
+              cityNames.map((city) {
+                return DropdownMenuItem<String>(value: city, child: Text(city));
               }).toList(),
           onChanged: (value) {
-            if (value != null) moveMapToCity(value);
+            if (value != null) {
+              moveMapToCity(value);
+            }
           },
         ),
       ],

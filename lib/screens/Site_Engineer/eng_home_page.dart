@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:senior_project/screens/digital_twin_page.dart';
 import 'package:senior_project/screens/Manager/alerts_page.dart';
@@ -11,7 +12,6 @@ import 'eng_environment_page.dart';
 import 'eng_materials_page.dart';
 import 'eng_equipment_page.dart';
 import 'eng_project_home_tab.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabaseClient = Supabase.instance.client;
 
@@ -99,7 +99,10 @@ class EngTasksTab extends StatefulWidget {
 
 class _EngTasksTabState extends State<EngTasksTab> {
   final supabase = supabaseClient;
+
   bool isLoading = true;
+  String searchQuery = '';
+
   List<Map<String, dynamic>> tasks = [];
 
   @override
@@ -124,7 +127,9 @@ class _EngTasksTabState extends State<EngTasksTab> {
       });
     } catch (e) {
       if (!mounted) return;
+
       setState(() => isLoading = false);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to load tasks: $e'),
@@ -134,61 +139,238 @@ class _EngTasksTabState extends State<EngTasksTab> {
     }
   }
 
+  List<Map<String, dynamic>> get filteredTasks {
+    final query = searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return tasks;
+
+    return tasks.where((task) {
+      final description = task['description']?.toString().toLowerCase() ?? '';
+      final status = task['status']?.toString().toLowerCase() ?? '';
+      final unit = task['progress_unit']?.toString().toLowerCase() ?? '';
+
+      return description.contains(query) ||
+          status.contains(query) ||
+          unit.contains(query);
+    }).toList();
+  }
+
+  Color progressColor(int percent) {
+    if (percent >= 88) return Colors.green;
+    if (percent >= 50) return const Color.fromARGB(255, 139, 209, 47);
+    if (percent >= 30) return Colors.orange;
+    return Colors.red;
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Center(child: CircularProgressIndicator());
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    if (tasks.isEmpty) return const Center(child: Text('No assigned tasks'));
+    return Column(
+      children: [
+        const SizedBox(height: 14),
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
-      itemCount: tasks.length,
-      itemBuilder: (context, index) {
-        final task = tasks[index];
-        final description = task['description']?.toString() ?? 'Task';
-        final status = task['status']?.toString() ?? 'Not Started';
-        final percent =
-            int.tryParse(task['progress_percent']?.toString() ?? '0') ?? 0;
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 14),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                description,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: TextField(
+              onChanged: (value) {
+                setState(() {
+                  searchQuery = value;
+                });
+              },
+              decoration: const InputDecoration(
+                hintText: 'Search tasks...',
+                border: InputBorder.none,
+                prefixIcon: Icon(Icons.search),
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
               ),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(value: percent / 100),
-              const SizedBox(height: 8),
-              Text('$percent% completed • $status'),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => EngTaskProgressUpdate(task: task),
-                      ),
-                    );
-
-                    if (result == true) loadTasks();
-                  },
-                  child: const Text('Update Progress'),
-                ),
-              ),
-            ],
+            ),
           ),
-        );
-      },
+        ),
+
+        const SizedBox(height: 14),
+
+        Expanded(
+          child:
+              filteredTasks.isEmpty
+                  ? const Center(
+                    child: Text(
+                      'No tasks found',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                  : RefreshIndicator(
+                    onRefresh: loadTasks,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
+                      itemCount: filteredTasks.length,
+                      itemBuilder: (context, index) {
+                        final task = filteredTasks[index];
+
+                        final description =
+                            task['description']?.toString() ?? 'Task';
+
+                        final status =
+                            task['status']?.toString() ?? 'Not Started';
+
+                        final percent =
+                            int.tryParse(
+                              task['progress_percent']?.toString() ?? '0',
+                            ) ??
+                            0;
+
+                        final estimated =
+                            double.tryParse(
+                              task['est_quantity']?.toString() ?? '0',
+                            ) ??
+                            0;
+
+                        final completed =
+                            double.tryParse(
+                              task['completed_quantity']?.toString() ?? '0',
+                            ) ??
+                            0;
+
+                        final unit =
+                            task['progress_unit']?.toString() ?? 'unit';
+
+                        final color = progressColor(percent);
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: color.withOpacity(0.18)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      description,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      status,
+                                      style: TextStyle(
+                                        color: color,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: LinearProgressIndicator(
+                                  value: (percent / 100).clamp(0.0, 1.0),
+                                  minHeight: 9,
+                                  backgroundColor: Colors.grey.shade200,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    color,
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              Row(
+                                children: [
+                                  Text(
+                                    '$percent% completed',
+                                    style: TextStyle(
+                                      color: color,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    '$completed / $estimated $unit',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => EngTaskProgressUpdate(
+                                              task: task,
+                                            ),
+                                      ),
+                                    );
+
+                                    if (result == true) {
+                                      loadTasks();
+                                    }
+                                  },
+                                  child: const Text(
+                                    'Update Progress >',
+                                    style: TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+        ),
+      ],
     );
   }
 }

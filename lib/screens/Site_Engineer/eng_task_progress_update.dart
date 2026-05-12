@@ -44,11 +44,15 @@ class _EngTaskProgressUpdateState extends State<EngTaskProgressUpdate> {
   }
 
   Color get statusColor {
-    if (status == "Completed") {
+    if (progressPercent >= 88) {
       return Colors.green;
     }
 
-    if (status == "Ongoing") {
+    if (progressPercent >= 50) {
+      return const Color.fromARGB(255, 139, 209, 47);
+    }
+
+    if (progressPercent >= 30) {
       return Colors.orange;
     }
 

@@ -13,6 +13,9 @@ class EditTaskScreen extends StatefulWidget {
 class _EditTaskScreenState extends State<EditTaskScreen> {
   final supabase = Supabase.instance.client;
 
+  static const Color primaryColor = Color(0xff0d1b46);
+  static const Color borderColor = Color(0xffeeeeee);
+
   late TextEditingController descriptionController;
   late TextEditingController quantityController;
 
@@ -20,10 +23,20 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   DateTime? endDate;
 
   String selectedUnit = "unit";
-
   bool isSaving = false;
 
-  final List<String> units = ["unit", "m", "m²", "kg", "pcs", "hrs", "%", "ft"];
+  final List<String> units = [
+    "unit",
+    "meters",
+    "m",
+    "m²",
+    "kg",
+    "pcs",
+    "hrs",
+    "%",
+    "ft",
+    "m3",
+  ];
 
   @override
   void initState() {
@@ -37,10 +50,11 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       text: widget.task['est_quantity']?.toString() ?? '',
     );
 
-    selectedUnit = widget.task['progress_unit']?.toString() ?? "unit";
+    final savedUnit = widget.task['progress_unit']?.toString() ?? "unit";
+
+    selectedUnit = units.contains(savedUnit) ? savedUnit : "unit";
 
     startDate = DateTime.tryParse(widget.task['start_date']?.toString() ?? '');
-
     endDate = DateTime.tryParse(widget.task['end_date']?.toString() ?? '');
   }
 
@@ -76,17 +90,15 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       return;
     }
 
-    setState(() {
-      isSaving = true;
-    });
+    setState(() => isSaving = true);
 
     try {
       await supabase
           .from('tasks')
           .update({
             'description': description,
-            'start_date': startDate!.toIso8601String(),
-            'end_date': endDate!.toIso8601String(),
+            'start_date': startDate!.toIso8601String().split('T').first,
+            'end_date': endDate!.toIso8601String().split('T').first,
             'progress_unit': selectedUnit,
             'est_quantity': quantity,
           })
@@ -99,9 +111,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       showError("Error updating task: $e");
     } finally {
       if (mounted) {
-        setState(() {
-          isSaving = false;
-        });
+        setState(() => isSaving = false);
       }
     }
   }
@@ -134,8 +144,19 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
 
   String formatDate(DateTime? date) {
     if (date == null) return "Select";
-
     return "${date.day}/${date.month}/${date.year}";
+  }
+
+  String get resourceType {
+    if (widget.task['material_id'] != null) return "Material";
+    if (widget.task['equipment_id'] != null) return "Equipment";
+    return "General";
+  }
+
+  String get quantityLabel {
+    if (resourceType == "Material") return "Required Material Quantity";
+    if (resourceType == "Equipment") return "Required Equipment Quantity";
+    return "Estimated Task Quantity";
   }
 
   @override
@@ -153,11 +174,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text(
-            "Task Description",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-
+          sectionTitle("Task Description"),
           const SizedBox(height: 8),
 
           TextField(
@@ -177,9 +194,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                   onTap: () => pickDate(true),
                 ),
               ),
-
               const SizedBox(width: 12),
-
               Expanded(
                 child: buildDateCard(
                   title: "End Date",
@@ -192,35 +207,63 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
 
           const SizedBox(height: 20),
 
+          sectionTitle("Task Resource"),
+          const SizedBox(height: 8),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: const Color(0xfff8f9fb),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  resourceType == "Material"
+                      ? Icons.inventory_2_outlined
+                      : resourceType == "Equipment"
+                      ? Icons.precision_manufacturing_outlined
+                      : Icons.task_alt_rounded,
+                  color: primaryColor,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  resourceType,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          sectionTitle(quantityLabel),
+          const SizedBox(height: 8),
+
           Row(
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: selectedUnit,
                   decoration: inputDecoration("Unit"),
-
                   items:
                       units.map((unit) {
                         return DropdownMenuItem(value: unit, child: Text(unit));
                       }).toList(),
-
                   onChanged: (value) {
                     if (value == null) return;
-
-                    setState(() {
-                      selectedUnit = value;
-                    });
+                    setState(() => selectedUnit = value);
                   },
                 ),
               ),
-
               const SizedBox(width: 12),
-
               Expanded(
                 child: TextField(
                   controller: quantityController,
                   keyboardType: TextInputType.number,
-                  decoration: inputDecoration("Estimated Quantity"),
+                  decoration: inputDecoration("Quantity"),
                 ),
               ),
             ],
@@ -236,15 +279,14 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
               border: Border.all(color: Colors.orange.withOpacity(0.18)),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Icon(Icons.info_outline, color: Colors.orange),
-
                 const SizedBox(width: 10),
-
                 Expanded(
                   child: Text(
-                    "Tasks can only be edited before work starts.",
-                    style: TextStyle(color: Colors.grey.shade700),
+                    "Tasks can only be edited before work starts. If this task uses material or equipment, only update the quantity/unit carefully.",
+                    style: TextStyle(color: Colors.grey.shade700, height: 1.4),
                   ),
                 ),
               ],
@@ -257,15 +299,13 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         padding: const EdgeInsets.all(20),
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1C2A44),
+            backgroundColor: primaryColor,
             minimumSize: const Size(double.infinity, 55),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
           ),
-
           onPressed: isSaving ? null : saveTask,
-
           child:
               isSaving
                   ? const CircularProgressIndicator(color: Colors.white)
@@ -281,6 +321,10 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     );
   }
 
+  Widget sectionTitle(String title) {
+    return Text(title, style: const TextStyle(fontWeight: FontWeight.bold));
+  }
+
   Widget buildDateCard({
     required String title,
     required DateTime? date,
@@ -289,10 +333,8 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-
+        sectionTitle(title),
         const SizedBox(height: 8),
-
         InkWell(
           onTap: onTap,
           child: Container(
@@ -300,11 +342,11 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
             decoration: BoxDecoration(
               color: const Color(0xfff8f9fb),
               borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
             ),
             child: Row(
               children: [
                 Expanded(child: Text(formatDate(date))),
-
                 const Icon(Icons.calendar_month_rounded, size: 18),
               ],
             ),
@@ -319,17 +361,14 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       hintText: hint,
       filled: true,
       fillColor: const Color(0xfff8f9fb),
-
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
       ),
-
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
       ),
-
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide(color: Colors.blue.shade300),
