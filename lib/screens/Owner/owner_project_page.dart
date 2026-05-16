@@ -38,15 +38,12 @@ class OwnerProjectScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      drawer:
-          showBackButton
-              ? null
-              : OwnerSidebar(
-                ownerName: ownerName,
-                profileImageUrl: profileImageUrl,
-                onLogout: onLogout,
-                onProfileUpdated: onProfileUpdated,
-              ),
+      drawer: OwnerSidebar(
+        ownerName: ownerName,
+        profileImageUrl: profileImageUrl,
+        onLogout: onLogout,
+        onProfileUpdated: onProfileUpdated,
+      ),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

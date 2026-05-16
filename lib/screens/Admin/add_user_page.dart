@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,7 +15,6 @@ class AddUserPage extends StatefulWidget {
 class _AddUserPageState extends State<AddUserPage> {
   final supabase = Supabase.instance.client;
 
-  // Use the same URL and anon key from your main.dart / .env
   static const String supabaseUrl = 'https://obiwgenpodvxcdgfjkyc.supabase.co';
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9iaXdnZW5wb2R2eGNkZ2Zqa3ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjIwMzksImV4cCI6MjA5MTYzODAzOX0.EAEuUgG-W0p5o3-114jxWk5Ge3phxJjMJvOeUcHxaaY';
@@ -61,6 +61,10 @@ class _AddUserPageState extends State<AddUserPage> {
     );
   }
 
+  bool isValidEmail(String email) {
+    return RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$').hasMatch(email);
+  }
+
   Future<void> pickImage(ImageSource source) async {
     final image = await picker.pickImage(source: source);
     if (image == null) return;
@@ -103,8 +107,28 @@ class _AddUserPageState extends State<AddUserPage> {
       return;
     }
 
-    if (email.isEmpty || !email.contains("@")) {
+    if (name.length < 3) {
+      showError("Name must be at least 3 characters");
+      return;
+    }
+
+    if (email.isEmpty || !isValidEmail(email)) {
       showError("Enter a valid email");
+      return;
+    }
+
+    if (phone.isEmpty) {
+      showError("Phone number is required");
+      return;
+    }
+
+    if (phone.length != 10) {
+      showError("Phone number must be exactly 10 digits");
+      return;
+    }
+
+    if (password.isEmpty) {
+      showError("Password is required");
       return;
     }
 
@@ -292,6 +316,7 @@ class _AddUserPageState extends State<AddUserPage> {
                 },
               ),
             ),
+            onChanged: (_) => setState(() {}),
           ),
 
           const SizedBox(height: 24),
@@ -372,9 +397,53 @@ class _AddUserPageState extends State<AddUserPage> {
     String hint,
     IconData icon,
   ) {
+    final isPhoneField = hint.toLowerCase().contains("phone");
+    final isEmailField = hint.toLowerCase().contains("email");
+    final isNameField = hint.toLowerCase().contains("name");
+
+    String? errorText;
+
+    if (isPhoneField &&
+        controller.text.isNotEmpty &&
+        controller.text.length != 10) {
+      errorText = "Phone number must be exactly 10 digits";
+    }
+
+    if (isNameField &&
+        controller.text.isNotEmpty &&
+        controller.text.trim().length < 3) {
+      errorText = "Name must be at least 3 characters";
+    }
+
+    if (isEmailField &&
+        controller.text.isNotEmpty &&
+        !isValidEmail(controller.text.trim())) {
+      errorText = "Enter a valid email";
+    }
+
     return TextField(
       controller: controller,
-      decoration: inputDecoration(icon).copyWith(hintText: hint),
+      keyboardType:
+          isPhoneField
+              ? TextInputType.number
+              : isEmailField
+              ? TextInputType.emailAddress
+              : TextInputType.text,
+      inputFormatters:
+          isPhoneField
+              ? [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ]
+              : isNameField
+              ? [FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\s]"))]
+              : null,
+      decoration: inputDecoration(
+        icon,
+      ).copyWith(hintText: hint, errorText: errorText, counterText: ""),
+      onChanged: (_) {
+        setState(() {});
+      },
     );
   }
 }

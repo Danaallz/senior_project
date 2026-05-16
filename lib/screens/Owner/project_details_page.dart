@@ -35,6 +35,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   Map<String, dynamic>? project;
   Map<String, dynamic>? manager;
   Map<String, dynamic>? digitalTwinSnapshot;
+  Map<String, dynamic>? ownerProfile;
 
   // ================================
   // PROJECT INSIGHTS COUNTERS
@@ -97,10 +98,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       equipment = await countProjectRows('equipment');
     }
 
-    return {
-      'materials': materials,
-      'equipment': equipment,
-    };
+    return {'materials': materials, 'equipment': equipment};
   }
 
   Future<void> loadProject() async {
@@ -108,7 +106,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       final projectData = await supabaseService.getProjectById(
         widget.projectId,
       );
-
+      final currentOwnerProfile = await supabaseService.getCurrentProfile();
       Map<String, dynamic>? managerData;
       // ================================
       // MANAGER ID COMPATIBILITY FIX
@@ -117,9 +115,10 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       // - manager_id
       // This keeps your teammate's code working while supporting your latest schema.
       // ================================
-      final managerId = cleanText(projectData?['assigned_manager_id']).isNotEmpty
-          ? cleanText(projectData?['assigned_manager_id'])
-          : cleanText(projectData?['manager_id']);
+      final managerId =
+          cleanText(projectData?['assigned_manager_id']).isNotEmpty
+              ? cleanText(projectData?['assigned_manager_id'])
+              : cleanText(projectData?['manager_id']);
 
       final snapshotData = await supabaseService.getLatestDigitalTwinSnapshot(
         widget.projectId,
@@ -145,6 +144,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
       setState(() {
         project = projectData;
+        ownerProfile = currentOwnerProfile;
         manager = managerData;
         digitalTwinSnapshot = snapshotData;
         sitePhotos = List<Map<String, dynamic>>.from(photosResponse);
@@ -339,12 +339,20 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           : cleanText(project!['longitude']),
     );
 
+    final ownerName =
+        cleanText(ownerProfile?['full_name']).isEmpty
+            ? cleanText(ownerProfile?['name']).isEmpty
+                ? 'Owner'
+                : cleanText(ownerProfile?['name'])
+            : cleanText(ownerProfile?['full_name']);
+
+    final ownerImageUrl = cleanText(ownerProfile?['profile_image_url']);
     return Scaffold(
       backgroundColor: Colors.white,
 
       drawer: OwnerSidebar(
-        ownerName: "Owner",
-        profileImageUrl: null,
+        ownerName: ownerName,
+        profileImageUrl: ownerImageUrl,
         onLogout: () async {
           await supabase.auth.signOut();
 
@@ -481,7 +489,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
-
   // ================================
   // PROJECT HEADER
   // Same content as OwnerProjectHeader, but with a green In Progress badge.
@@ -504,23 +511,24 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(18),
-          child: isValidImageUrl(imageUrl)
-              ? Image.network(
-                  imageUrl,
-                  width: 96,
-                  height: 96,
-                  fit: BoxFit.cover,
-                )
-              : Container(
-                  width: 96,
-                  height: 96,
-                  color: Colors.grey.shade200,
-                  child: const Icon(
-                    Icons.apartment_rounded,
-                    color: primaryColor,
-                    size: 40,
+          child:
+              isValidImageUrl(imageUrl)
+                  ? Image.network(
+                    imageUrl,
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                  )
+                  : Container(
+                    width: 96,
+                    height: 96,
+                    color: Colors.grey.shade200,
+                    child: const Icon(
+                      Icons.apartment_rounded,
+                      color: primaryColor,
+                      size: 40,
+                    ),
                   ),
-                ),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -550,7 +558,10 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               ),
               const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: statusBg,
                   borderRadius: BorderRadius.circular(16),

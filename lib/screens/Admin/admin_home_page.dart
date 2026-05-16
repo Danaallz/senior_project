@@ -28,6 +28,7 @@ class _AdminHomePageState extends State<AdminHomePage>
 
   List<Map<String, dynamic>> projects = [];
   List<Map<String, dynamic>> users = [];
+  Map<String, dynamic>? adminProfile;
 
   @override
   void initState() {
@@ -40,6 +41,28 @@ class _AdminHomePageState extends State<AdminHomePage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  String cleanText(dynamic value) {
+    return value?.toString().trim().replaceAll(RegExp(r'\s+'), ' ') ?? '';
+  }
+
+  bool isValidImageUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  String get adminName {
+    final fullName = cleanText(adminProfile?['full_name']);
+    final name = cleanText(adminProfile?['name']);
+
+    if (fullName.isNotEmpty) return fullName;
+    if (name.isNotEmpty) return name;
+    return "Admin";
+  }
+
+  String get adminImageUrl {
+    return cleanText(adminProfile?['profile_image_url']);
   }
 
   Future<void> loadData() async {
@@ -56,11 +79,24 @@ class _AdminHomePageState extends State<AdminHomePage>
           .select()
           .order('created_at', ascending: false);
 
+      final currentUserId = supabase.auth.currentUser?.id;
+
+      Map<String, dynamic>? adminProfileResponse;
+
+      if (currentUserId != null) {
+        adminProfileResponse = await supabase
+            .from('profiles')
+            .select()
+            .eq('id', currentUserId)
+            .maybeSingle();
+      }
+
       if (!mounted) return;
 
       setState(() {
         projects = List<Map<String, dynamic>>.from(projectsResponse);
         users = List<Map<String, dynamic>>.from(usersResponse);
+        adminProfile = adminProfileResponse;
         isLoading = false;
       });
     } catch (e) {
@@ -529,7 +565,6 @@ class _AdminHomePageState extends State<AdminHomePage>
                 child: const Icon(Icons.menu, size: 30),
               ),
               const Spacer(),
-              const Icon(Icons.notifications_outlined, size: 28),
             ],
           ),
         );
@@ -542,33 +577,32 @@ class _AdminHomePageState extends State<AdminHomePage>
       padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
       child: Row(
         children: [
-          ClipOval(
-            child: Image.asset(
-              "assets/Admin.jpg",
-              width: 78,
-              height: 78,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 78,
-                  height: 78,
-                  color: Colors.grey.shade200,
-                  child: const Icon(
-                    Icons.admin_panel_settings,
-                    color: primaryColor,
-                    size: 38,
-                  ),
-                );
-              },
-            ),
+          CircleAvatar(
+            radius: 39,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage:
+                isValidImageUrl(adminImageUrl)
+                    ? NetworkImage(adminImageUrl)
+                    : null,
+            child:
+                isValidImageUrl(adminImageUrl)
+                    ? null
+                    : const Icon(
+                      Icons.admin_panel_settings,
+                      color: primaryColor,
+                      size: 38,
+                    ),
           ),
           const SizedBox(width: 16),
-          const Text(
-            "Admin",
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: primaryColor,
+          Expanded(
+            child: Text(
+              adminName,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: primaryColor,
+              ),
             ),
           ),
         ],
@@ -612,30 +646,36 @@ class _AdminHomePageState extends State<AdminHomePage>
             children: [
               Row(
                 children: [
-                  ClipOval(
-                    child: Image.asset(
-                      "assets/Admin.jpg",
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return CircleAvatar(
-                          radius: 24,
-                          backgroundColor: Colors.grey.shade200,
-                          child: const Icon(
-                            Icons.admin_panel_settings,
-                            color: primaryColor,
-                          ),
-                        );
-                      },
-                    ),
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.grey.shade200,
+                    backgroundImage:
+                        isValidImageUrl(adminImageUrl)
+                            ? NetworkImage(adminImageUrl)
+                            : null,
+                    child:
+                        isValidImageUrl(adminImageUrl)
+                            ? null
+                            : const Icon(
+                              Icons.admin_panel_settings,
+                              color: primaryColor,
+                            ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      "Admin",
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          adminName,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const Text(
+                          "Admin",
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -652,6 +692,22 @@ class _AdminHomePageState extends State<AdminHomePage>
                 onTap: () {
                   Navigator.pop(context);
                   _tabController.animateTo(0);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.apartment_outlined),
+                title: const Text("Projects"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _tabController.animateTo(1);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.people_outline),
+                title: const Text("User Management"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _tabController.animateTo(2);
                 },
               ),
               ListTile(
@@ -852,49 +908,125 @@ class _AdminHomePageState extends State<AdminHomePage>
   }
 
   Widget approvedProjectCard(Map<String, dynamic> project) {
-    final name = project['name']?.toString() ?? "Unnamed Project";
-    final location = project['location']?.toString() ?? "No location";
+    final name =
+        cleanText(project['name']).isEmpty
+            ? "Unnamed Project"
+            : cleanText(project['name']);
+
+    final location =
+        cleanText(project['location']).isEmpty
+            ? cleanText(project['city']).isEmpty
+                ? "No location"
+                : cleanText(project['city'])
+            : cleanText(project['location']);
+
+    final imageUrl = cleanText(project['image_url']);
+    final startDate = cleanText(project['start_date']);
+    final endDate = cleanText(project['end_date']);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            child:
+                isValidImageUrl(imageUrl)
+                    ? Image.network(
+                      imageUrl,
+                      height: 135,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => projectImagePlaceholder(),
+                    )
+                    : projectImagePlaceholder(),
           ),
-          const SizedBox(height: 6),
-          Text(location, style: TextStyle(color: Colors.grey.shade700)),
-          const SizedBox(height: 12),
-          statusChip("In Progress", orangeColor),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => editProject(project),
-                  icon: const Icon(Icons.edit),
-                  label: const Text("Edit"),
+          Padding(
+            padding: const EdgeInsets.all(15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    statusChip("In Progress", orangeColor),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => removeProject(project['id'].toString()),
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  label: const Text(
-                    "Remove",
-                    style: TextStyle(color: Colors.red),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        location,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                    ),
+                  ],
+                ),
+                if (startDate.isNotEmpty || endDate.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: smallInfoBox("Start", startDate)),
+                      const SizedBox(width: 10),
+                      Expanded(child: smallInfoBox("End", endDate)),
+                    ],
                   ),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => editProject(project),
+                        icon: const Icon(Icons.edit),
+                        label: const Text("Edit"),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => removeProject(project['id'].toString()),
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        label: const Text(
+                          "Remove",
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -902,55 +1034,174 @@ class _AdminHomePageState extends State<AdminHomePage>
   }
 
   Widget pendingProjectCard(Map<String, dynamic> project) {
-    final name = project['name']?.toString() ?? "Unnamed Project";
-    final location = project['location']?.toString() ?? "No location";
+    final name =
+        cleanText(project['name']).isEmpty
+            ? "Unnamed Project"
+            : cleanText(project['name']);
+
+    final location =
+        cleanText(project['location']).isEmpty
+            ? cleanText(project['city']).isEmpty
+                ? "No location"
+                : cleanText(project['city'])
+            : cleanText(project['location']);
+
+    final imageUrl = cleanText(project['image_url']);
+    final startDate = cleanText(project['start_date']);
+    final endDate = cleanText(project['end_date']);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.orange.withOpacity(0.18)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            child:
+                isValidImageUrl(imageUrl)
+                    ? Image.network(
+                      imageUrl,
+                      height: 125,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => projectImagePlaceholder(),
+                    )
+                    : projectImagePlaceholder(),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ),
+                    statusChip("Pending", orangeColor),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        location,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                    ),
+                  ],
+                ),
+                if (startDate.isNotEmpty || endDate.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: smallInfoBox("Start", startDate)),
+                      const SizedBox(width: 10),
+                      Expanded(child: smallInfoBox("End", endDate)),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: greenColor,
+                        ),
+                        onPressed:
+                            () => approveProject(project['id'].toString()),
+                        icon: const Icon(Icons.check, color: Colors.white),
+                        label: const Text(
+                          "Approve",
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        onPressed:
+                            () => rejectProject(project['id'].toString()),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        label: const Text(
+                          "Reject",
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget projectImagePlaceholder() {
+    return Container(
+      height: 135,
+      width: double.infinity,
+      color: Colors.grey.shade200,
+      child: const Icon(
+        Icons.apartment_rounded,
+        color: primaryColor,
+        size: 42,
+      ),
+    );
+  }
+
+  Widget smallInfoBox(String title, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            title,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
           ),
-          const SizedBox(height: 6),
-          Text(location, style: TextStyle(color: Colors.grey.shade700)),
-          const SizedBox(height: 12),
-          statusChip("Pending", orangeColor),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: greenColor),
-                  onPressed: () => approveProject(project['id'].toString()),
-                  icon: const Icon(Icons.check, color: Colors.white),
-                  label: const Text(
-                    "Approve",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  onPressed: () => rejectProject(project['id'].toString()),
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  label: const Text(
-                    "Reject",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
+          const SizedBox(height: 3),
+          Text(
+            value.isEmpty ? "-" : value,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           ),
         ],
       ),
@@ -982,9 +1233,9 @@ class _AdminHomePageState extends State<AdminHomePage>
           children: [
             const Expanded(
               child: Text(
-              "User Management",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
+                "User Management",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
             ),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
@@ -1056,11 +1307,11 @@ class _AdminHomePageState extends State<AdminHomePage>
             child:
                 imageUrl == null || imageUrl.isEmpty
                     ? Text(
-              name.isNotEmpty ? name[0].toUpperCase() : "U",
-              style: const TextStyle(
-                color: primaryColor,
-                fontWeight: FontWeight.bold,
-              ),
+                      name.isNotEmpty ? name[0].toUpperCase() : "U",
+                      style: const TextStyle(
+                        color: primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
                     )
                     : null,
           ),
